@@ -538,12 +538,76 @@ export function standPose(type: string): { pos: THREE.Vector3; quat: THREE.Quate
   }
 }
 
-/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
-export function hostPose(host: string, type: string) {
-  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : null;
+// ---------- Tester dei conduttori ----------
+function testPad(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(9, 0.3, 6), mat(0xd9a660, { roughness: 0.95 }), 0, 0.15, 0));
+  const metal = mat(0xc9ced6, { metalness: 0.85, roughness: 0.3 });
+  for (const sx of [-1, 1]) {
+    // graffetta: un anello allungato di filo di metallo, dal centro verso il bordo
+    const path = new THREE.CurvePath<THREE.Vector3>();
+    const pts = [[0.8, -0.45], [3.9, -0.45], [3.9, 0.45], [1.2, 0.45], [1.2, -0.15], [3.4, -0.15]].map(([x, z]) => new THREE.Vector3(sx * x, 0.42, z));
+    for (let i = 0; i < pts.length - 1; i++) path.add(new THREE.LineCurve3(pts[i], pts[i + 1]));
+    g.add(mesh(new THREE.TubeGeometry(path as any, 60, 0.09, 6), metal));
+  }
+  return { group: g };
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand };
+function coin(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.45, 1.45, 0.25, 32), mat(0xc9a24a, { metalness: 0.8, roughness: 0.35 }), 0, 0.125, 0));
+  g.add(mesh(new THREE.TorusGeometry(1.15, 0.05, 6, 32), mat(0xb08a35, { metalness: 0.8 }), 0, 0.26, 0).rotateX(Math.PI / 2));
+  return { group: g };
+}
+
+function banana(): Built {
+  const g = new THREE.Group();
+  const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(-4, 0.9, 0.8), new THREE.Vector3(0, 0.9, -1.6), new THREE.Vector3(4, 0.9, 0.8));
+  const geo = new THREE.TubeGeometry(curve, 30, 0.8, 10);
+  // più sottile alle punte
+  const pos = geo.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const t = Math.floor(i / 11) / 30;
+    const k = 0.35 + 0.65 * Math.sin(Math.PI * t);
+    const c = curve.getPoint(t);
+    v.sub(c).multiplyScalar(k).add(c);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals();
+  g.add(mesh(geo, mat(0xf2cf3b, { roughness: 0.7 })));
+  for (const x of [-4, 4]) g.add(mesh(new THREE.SphereGeometry(0.28, 8, 6), mat(0x5a4320), x, 0.9, 0.8));
+  return { group: g };
+}
+
+function eraser(): Built {
+  const g = new THREE.Group();
+  const a = roundedBox(2.2, 1, 2.2, 0.25, mat(0xf3a0b4, { roughness: 0.9 }));
+  a.position.x = -0.9;
+  const b = roundedBox(1.8, 1, 2.2, 0.25, mat(0x5b8fd6, { roughness: 0.9 }));
+  b.position.x = 1.1;
+  g.add(a, b);
+  return { group: g };
+}
+
+function plasticCap(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(1.3, 1.3, 0.9, 28), mat(0x2f80d1, { roughness: 0.5 }), 0, 0.45, 0));
+  return { group: g };
+}
+
+/** Dove sta l'oggetto appoggiato sul piano di prova: sopra le due graffette. */
+export function padPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
+  return { pos: new THREE.Vector3(0, 0.5, 0), quat: new THREE.Quaternion() };
+}
+
+/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
+export function hostPose(host: string, type: string) {
+  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : host === 'testPad' ? padPose() : null;
+}
+
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();

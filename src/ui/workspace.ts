@@ -1,5 +1,5 @@
 // Il laboratorio: banco 3D, tavolozza dei pezzi, guida passo passo, MakeCode e "Prova!".
-import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER } from '../data/parts';
+import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER, mountsOf } from '../data/parts';
 import type { Level, Mode, LevelCtx } from '../data/levels';
 import { analyze, canConnect, Issue, PartInst, Wire, Analysis, PIN_PADS } from '../sim/circuit';
 import { MicrobitRuntime } from '../sim/runtime';
@@ -215,7 +215,7 @@ export class Workspace {
     for (const t of order) {
       const p = PARTS[t];
       const cat = CATEGORIES.find(c => c.id === p.category)!;
-      const b = el(`<div class="part" role="button" tabindex="0" draggable="${!p.tool}" data-type="${t}" style="--bd:${cat.bd};--bg:${cat.bg}">
+      const b = el(`<div class="part${mountsOf(t).includes('testPad') ? ' part-live' : ''}" role="button" tabindex="0" draggable="${!p.tool}" data-type="${t}" style="--bd:${cat.bd};--bg:${cat.bg}">
         ${img(p.icon, 46, '')}<span class="part-name">${esc(p.name)}</span>${p.safety ? safetyTag(p.safety) : ''}
         <button class="part-info" aria-label="Cos'è ${esc(p.name)}?">${icon('ph:question-fill', 18)}</button>
       </div>`);
@@ -416,7 +416,7 @@ export class Workspace {
   addPart(type: string, x?: number, z?: number) {
     const def = PARTS[type];
     if (!def || def.tool) { openCard(type); return; }
-    if (this.running) { toast('Prima ferma la prova, poi aggiungi i pezzi.'); return; }
+    if (this.running && !mountsOf(type).includes('testPad')) { toast('Prima ferma la prova, poi aggiungi i pezzi.'); return; }
     if (type === 'microbit' && this.parts.some(p => p.type === 'microbit')) { toast('Il micro:bit c\'è già: per questi progetti ne basta uno.'); return; }
     this.pushUndo();
     const pos = x === undefined ? this.freeSpot(type) : { x, z: z! };
@@ -643,6 +643,7 @@ export class Workspace {
     m.root.querySelector('[data-x=yes]')!.addEventListener('click', () => {
       m.close();
       this.stopRun();
+      this.tested = {};
       clearWork(this.level.id);
       this.parts = structuredClone(this.level.start.parts);
       this.wires = structuredClone(this.level.start.wires);
@@ -783,6 +784,42 @@ export class Workspace {
     this.setRunning(false);
   }
 
+  // ---------- tester dei conduttori ----------
+  tested: Record<string, boolean> = {};
+  private padTouch = new Map<string, boolean>();
+  /** I pin collegati al GND attraverso un oggetto che conduce (sul piano di prova) risultano "toccati". */
+  private updateTouches() {
+    const a = this.analysis;
+    if (!a) return;
+    const find = (r: string) => a.nets.find(r);
+    const extra = new Map<string, string>(); // unioni in più: graffetta A ↔ graffetta B se l'oggetto conduce
+    for (const pad of this.parts.filter(p => p.type === 'testPad')) {
+      const obj = this.parts.find(o => o.attachedTo === pad.id);
+      if (obj && PARTS[obj.type]?.conductive) extra.set(find(`${pad.id}:A`), find(`${pad.id}:B`));
+    }
+    const root = (r: string) => { const x = find(r); return extra.get(x) ?? x; };
+    for (const mb of this.parts.filter(p => p.type === 'microbit')) {
+      const g = root(`${mb.id}:GND`);
+      for (const pin of PIN_PADS) {
+        const on = this.running && root(`${mb.id}:${pin}`) === g;
+        const key = mb.id + pin;
+        if ((this.padTouch.get(key) ?? false) !== on) { this.padTouch.set(key, on); this.rt.touchPin(pin, on); }
+      }
+    }
+    // cosa abbiamo provato: oggetto sul piano, collegato tra un pin e il GND, con la prova accesa
+    if (!this.running) return;
+    for (const pad of this.parts.filter(p => p.type === 'testPad')) {
+      const obj = this.parts.find(o => o.attachedTo === pad.id);
+      if (!obj) continue;
+      const A = find(`${pad.id}:A`), B = find(`${pad.id}:B`);
+      const wired = this.parts.some(mb => mb.type === 'microbit' && PIN_PADS.some(pin => {
+        const P = find(`${mb.id}:${pin}`), G = find(`${mb.id}:GND`);
+        return (P === A && G === B) || (P === B && G === A);
+      }));
+      if (wired) this.tested[obj.type] = !!PARTS[obj.type]?.conductive;
+    }
+  }
+
   // ---------- luce della stanza (luce notturna) ----------
   private roomDark = false;
   private covered = false;
@@ -799,6 +836,8 @@ export class Workspace {
   private setRunning(r: boolean) {
     if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); }
     this.running = r;
+    this.padTouch.clear();
+    if (r) queueMicrotask(() => this.updateTouches());
     this.root.classList.toggle('running', r);
     const btn = this.q('[data-act=run]');
     btn.innerHTML = r ? `${icon('ph:stop-fill', 24)}<span>Ferma</span>` : `${icon('ph:play-fill', 24)}<span>Prova!</span>`;
@@ -886,6 +925,7 @@ export class Workspace {
       stats: this.running ? this.rt.stats : null, servoMoves: this.hw.servoMoves, code: this.code,
       codeChangedSinceStart: this.codeChanged, ranChangedCode: this.ranChanged,
       runInStep: this.running && this.runEpoch === this.stepEpoch && norm(this.runCode) === norm(this.code),
+      icon: this.running ? this.rt.lastIcon : '', tested: this.tested,
     };
   }
 
@@ -985,6 +1025,7 @@ export class Workspace {
       if (p.type === 'foilPatch') return `${img('luna.png', 24)}Stagnola sulla schiena! Nel mondo vero la incolli con la colla stick.`;
       return `${img('glue-stick.svg', 24)}Attaccato a Luna! Nel mondo vero lo incolli con la colla stick.`;
     }
+    if (host === 'testPad') return `${img('paperclip.svg', 24)}Sul piano di prova! Tocca le due graffette.`;
     if (host === 'cardStand') return `${img('package.svg', 24)}Appoggiato al leggio! Nel mondo vero lo fermi con un po' di nastro.`;
     if (host === 'strap') return `${img('socks.svg', 24)}Allacciato alla fascia! Nel mondo vero lo tieni fermo con l'elastico o il velcro.`;
     if (p.type === 'petTail') return `${img('luna-tail.png', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
@@ -1108,6 +1149,7 @@ export class Workspace {
     this.analysis = analyze(this.parts, this.wires);
     this.hw.setCircuit(this.parts, this.wires);
     this.scene.setState(this.parts, this.wires);
+    this.updateTouches();
     for (const s of this.parts.filter(p => p.type === 'servo')) this.scene.setServo(s.id, this.hw.servoAngle.get(s.id) ?? 90);
     this.renderIssues();
     this.renderGuide();
@@ -1115,7 +1157,7 @@ export class Workspace {
     this.persist();
     this.evaluate();
     clearInterval(this.evalTimer);
-    this.evalTimer = window.setInterval(() => { if (this.running) this.evaluate(); }, 300);
+    this.evalTimer = window.setInterval(() => { if (this.running) { this.updateTouches(); this.evaluate(); } }, 300);
   }
 
   private persist() {

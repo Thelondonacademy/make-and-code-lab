@@ -367,3 +367,28 @@ describe('Sasso, carta, forbice', () => {
     expect(f.errors).toEqual([]);
   }, 15000);
 });
+
+describe('Il tester dei conduttori', () => {
+  it('circuito chiuso sul pin 1: cuore; aperto: spento', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('tester')!.code);
+    await wait(60);
+    expect(f.frames.at(-1)).toBe('0'.repeat(25));
+    rt.touchPin('P1', true);
+    await wait(80);
+    expect(rt.lastIcon).toBe('Heart');
+    rt.touchPin('P1', false);
+    await wait(700);
+    expect(f.frames.at(-1)).toBe('0'.repeat(25));
+    expect(rt.lastIcon).toBe('');
+    rt.stop();
+  });
+  it('gli oggetti da provare: metalli e banana conducono, gomma e plastica no', async () => {
+    const { PARTS, mountsOf } = await import('../src/data/parts');
+    expect(['coin', 'banana', 'foilBall'].every(t => PARTS[t].conductive)).toBe(true);
+    expect(['eraser', 'plasticCap'].some(t => PARTS[t].conductive)).toBe(false);
+    expect(['coin', 'banana', 'eraser', 'plasticCap', 'foilBall'].every(t => mountsOf(t).includes('testPad'))).toBe(true);
+  });
+});

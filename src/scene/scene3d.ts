@@ -601,6 +601,15 @@ export class Scene3D {
       if (h?.userData.pad && ['P0', 'P1', 'P2'].includes(h.userData.pad)) { this.pressed = { kind: 'pad', name: h.userData.pad }; this.cb.onPad(h.userData.pad, true); this.controls.enabled = false; return; }
       const fid = h?.userData.partId as string | undefined;
       if (fid && this.objs.get(fid)?.inst.type === 'foilPatch') { this.pressed = { kind: 'foil', name: fid }; this.cb.onFoil(fid, true); this.controls.enabled = false; return; }
+      // gli oggetti da provare si spostano anche con la prova accesa (tester dei conduttori)
+      if (fid && this.mode === 'build' && mountsOf(this.objs.get(fid)!.inst.type).includes('testPad')) {
+        const p = this.onTable(e);
+        if (!p) return;
+        const start = new Map([[fid, this.objs.get(fid)!.built.group.getWorldPosition(new THREE.Vector3())]]);
+        this.drag = { kind: 'parts', ids: [fid], start, startPt: p, sx: e.clientX, sy: e.clientY, moved: false, additive: false };
+        this.controls.enabled = false;
+        this.renderer.domElement.setPointerCapture(e.pointerId);
+      }
       return;
     }
     // in Collega conta il cerchietto più vicino: toccarlo inizia un cavo, trascinarlo sposta la pinza che c'è sopra
@@ -762,7 +771,7 @@ export class Scene3D {
     const mount = mountOf(o.inst.type);
     if (!mount) return null;
     const pos = o.built.group.position;
-    const taken = (host: string, type: string) => [...this.objs.values()].some(x => x.inst.id !== id && x.inst.attachedTo === host && (type === 'servo' ? x.inst.type === 'servo' : x.inst.type === type));
+    const taken = (host: string, type: string) => [...this.objs.values()].some(x => x.inst.id !== id && x.inst.attachedTo === host && (this.objs.get(host)?.inst.type === 'testPad' || x.inst.type === type));
     if (mount === 'horn') {
       for (const s of this.objs.values()) {
         if (!s.built.horn || s.inst.id === id) continue;
@@ -775,7 +784,7 @@ export class Scene3D {
     for (const b of this.objs.values()) {
       if (!hosts.includes(b.inst.type as any) || b.inst.attachedTo) continue;
       const c = this.ownBox(b.built.group).getCenter(new THREE.Vector3());
-      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (b.inst.type === 'petBody' ? 7.5 : 9) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
+      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (b.inst.type === 'petBody' ? 7.5 : b.inst.type === 'testPad' ? 4.5 : 9) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
     }
     return null;
   }

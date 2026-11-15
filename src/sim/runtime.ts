@@ -361,7 +361,7 @@ export class MicrobitRuntime {
         rt.show(bits.slice(0, 25).padEnd(25, '0'));
         await rt.sleep(interval);
       },
-      clearScreen: () => { if (rt.leds.some(v => v > 0) && rt.stats.iconsShown.has('leds')) rt.stats.clearsAfterLeds++; rt.leds.fill(0); rt.bridge.display(rt.leds); },
+      clearScreen: () => { if (rt.leds.some(v => v > 0) && rt.stats.iconsShown.has('leds')) rt.stats.clearsAfterLeds++; rt.lastIcon = ''; rt.leds.fill(0); rt.bridge.display(rt.leds); },
       pause: async (ms: number) => { await rt.sleep(Number(ms) || 0); },
       forever: (fn: () => Promise<any>) => {
         rt.spawn(async () => {

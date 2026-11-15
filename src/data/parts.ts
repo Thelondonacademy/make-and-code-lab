@@ -1,6 +1,7 @@
 // Catalogo dei pezzi: componenti elettronici, materiali di riciclo e attrezzi.
 // Le schede ("card") sono scritte per bambini di 6-8 anni: frasi corte, parole semplici.
 
+export type Mount = 'horn' | 'petBody' | 'strap' | 'cardStand' | 'testPad';
 export type Category = 'cervello' | 'energia' | 'movimento' | 'luci' | 'collegamenti' | 'materiali' | 'attrezzi';
 export type Safety = 'solo' | 'adulto' | 'soloAdulto';
 export type TerminalKind = 'pad' | 'lead' | 'socket' | 'plug';
@@ -30,8 +31,9 @@ export interface PartDef {
   safety?: Safety;       // etichetta mostrata nella tavolozza
   terminals: TerminalDef[];
   material?: boolean;    // materiale di riciclo: si può attaccare al braccio del servo
-  mountOn?: 'horn' | 'petBody' | 'strap' | 'cardStand';
-  mountAlso?: 'cardStand'; // un secondo posto dove si può attaccare // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
+  mountOn?: Mount;
+  mountAlso?: Mount; // un secondo posto dove si può attaccare
+  conductive?: boolean; // fa passare l'elettricità (tester dei conduttori) // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
   tool?: boolean;        // attrezzo: solo scheda, non va sul banco
   size: [number, number, number]; // ingombro (cm) per posizionare e trascinare
   card: CardText;
@@ -211,7 +213,7 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   foilBall: {
-    type: 'foilBall', name: 'Pallina di stagnola', category: 'materiali', icon: 'foil.svg', material: true,
+    type: 'foilBall', name: 'Pallina di stagnola', category: 'materiali', icon: 'foil.svg', material: true, mountAlso: 'testPad', conductive: true,
     size: [3, 3, 3], terminals: [],
     card: {
       cosa: 'Carta stagnola appallottolata. Diventa un occhio, una pallina da lanciare...',
@@ -292,6 +294,41 @@ export const PARTS: Record<string, PartDef> = {
       mondo: 'il cartone di una scatola di cereali e un po\' di nastro adesivo',
     },
   },
+  testPad: {
+    type: 'testPad', name: 'Piano di prova', category: 'materiali', icon: 'paperclip.svg',
+    size: [9, 0.6, 6],
+    terminals: [
+      { id: 'A', label: 'graffetta sinistra', kind: 'pad', pos: [-3.7, 0.45, 0] },
+      { id: 'B', label: 'graffetta destra', kind: 'pad', pos: [3.7, 0.45, 0] },
+    ],
+    card: {
+      cosa: 'Un cartoncino con due graffette. Ci appoggi sopra l\'oggetto da provare.',
+      come: ['Un cavo va dal pin 1 a una graffetta. Un altro cavo va dal GND all\'altra.', 'Se l\'oggetto fa passare l\'elettricità da una graffetta all\'altra, il circuito si chiude.'],
+      sicurezza: [['solo', 'Infilare le graffette nel cartoncino e attaccare i coccodrilli.']],
+      attenzione: 'Non collegare mai il 3V con il GND.',
+      mondo: 'un cartoncino e due graffette di metallo (oppure tieni l\'oggetto tra le due pinze)',
+    },
+  },
+  coin: {
+    type: 'coin', name: 'Moneta', category: 'materiali', icon: 'coin.svg', mountOn: 'testPad', conductive: true,
+    size: [3, 0.3, 3], terminals: [],
+    card: { cosa: 'Una moneta. È di metallo.', come: ['Proviamola sul piano di prova: il cuore si accende?'], sicurezza: [['solo', 'Usarla per l\'esperimento.']], mondo: 'una moneta qualsiasi' },
+  },
+  banana: {
+    type: 'banana', name: 'Banana', category: 'materiali', icon: 'banana.svg', mountOn: 'testPad', conductive: true,
+    size: [8, 2, 3], terminals: [],
+    card: { cosa: 'Una banana. Dentro è piena di acqua e sali.', come: ['Secondo te fa passare l\'elettricità? Provala!'], sicurezza: [['solo', 'Usarla per l\'esperimento (poi puoi mangiarla).']], mondo: 'una banana' },
+  },
+  eraser: {
+    type: 'eraser', name: 'Gomma', category: 'materiali', icon: 'eraser.svg', mountOn: 'testPad',
+    size: [4, 1.2, 2.2], terminals: [],
+    card: { cosa: 'Una gomma per cancellare.', come: ['Secondo te fa passare l\'elettricità? Provala!'], sicurezza: [['solo', 'Usarla per l\'esperimento.']], mondo: 'una gomma' },
+  },
+  plasticCap: {
+    type: 'plasticCap', name: 'Tappo di plastica', category: 'materiali', icon: 'cap.svg', mountOn: 'testPad',
+    size: [2.8, 1, 2.8], terminals: [],
+    card: { cosa: 'Il tappo di una bottiglia. È di plastica.', come: ['Secondo te fa passare l\'elettricità? Provalo!'], sicurezza: [['solo', 'Usarlo per l\'esperimento.']], mondo: 'il tappo di una bottiglia di plastica' },
+  },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -325,10 +362,9 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
-export type Mount = 'horn' | 'petBody' | 'strap' | 'cardStand';
 export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
 /** Tutti i posti dove un pezzo si può attaccare (il micro:bit va sia sulla fascia sia sul leggio). */
 export const mountsOf = (type: string): Mount[] => [mountOf(type), PARTS[type]?.mountAlso].filter((m): m is Mount => !!m);

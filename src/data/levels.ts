@@ -16,6 +16,8 @@ export interface LevelCtx {
   codeChangedSinceStart: boolean;
   ranChangedCode: boolean;
   runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
+  icon: string;           // il disegno che il micro:bit mostra adesso ('' = spento)
+  tested: Record<string, boolean>; // oggetti provati sul piano di prova: conduce sì/no
 }
 
 /** Le pause nel codice (basic.pause(N)). */
@@ -58,6 +60,14 @@ const powered = (c: LevelCtx) => c.analysis.powered.size > 0;
 const onHost = (c: LevelCtx, type: string, host: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === host);
 /** La soglia di buio della luce notturna (lightLevel() < N). */
 const lightGoal = (code: string) => { const m = code.match(/lightLevel\(\)\s*<\s*(\d+)/); return m ? Number(m[1]) : null; };
+/** Il piano di prova è collegato tra il pin 1 e il GND (in un verso o nell'altro). */
+const padWired = (c: LevelCtx) => {
+  const pad = c.parts.find(p => p.type === 'testPad');
+  const n = c.analysis.nets;
+  return !!pad && c.parts.some(mb => mb.type === 'microbit' && ((n.same(`${mb.id}:P1`, `${pad.id}:A`) && n.same(`${mb.id}:GND`, `${pad.id}:B`)) || (n.same(`${mb.id}:P1`, `${pad.id}:B`) && n.same(`${mb.id}:GND`, `${pad.id}:A`))));
+};
+/** Sul piano c'è un oggetto che conduce. */
+const padConducts = (c: LevelCtx) => c.parts.some(o => c.parts.find(h => h.id === o.attachedTo)?.type === 'testPad' && ['coin', 'banana', 'foilBall'].includes(o.type));
 const onStrap = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === 'strap');
 /** Il numero di passi del traguardo (passi < N). */
 const stepGoal = (code: string) => { const m = code.match(/passi\s*<\s*(\d+)/); return m ? Number(m[1]) : null; };
@@ -273,6 +283,70 @@ input.onGesture(Gesture.Shake, function () {
     },
   },
   {
+    id: 'tester',
+    lesson: 2,
+    title: 'Il tester dei conduttori',
+    icon: 'gi:lightning-electron',
+    intro: 'Diventa uno scienziato: scopri quali oggetti fanno passare l\'elettricità!',
+    palette: ['microbit', 'battery', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'foilBall'],
+    start: { parts: [], wires: [] },
+    code: `basic.forever(function () {
+    if (input.pinIsPressed(TouchPin.P1)) {
+        basic.showIcon(IconNames.Heart)
+    } else {
+        basic.clearScreen()
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'logic'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
+      {
+        title: 'Il piano di prova', mode: 'build', text: 'Trascina il piano di prova sul banco: un cartoncino con due graffette.',
+        goal: c => has(c, 'testPad'),
+      },
+      {
+        title: 'Due cavi', mode: 'wire', text: 'Un cavo dal pin 1 a una graffetta. Un altro cavo dal GND all\'altra graffetta.',
+        goal: c => padWired(c),
+        checklist: c => {
+          const pad = c.parts.find(p => p.type === 'testPad');
+          const mb = c.parts.find(p => p.type === 'microbit');
+          const to = (t: string) => !!pad && !!mb && ['A', 'B'].some(e => c.analysis.nets.same(`${mb.id}:${t}`, `${pad.id}:${e}`));
+          return [{ label: 'Pin 1 → graffetta', color: '#F5C400', done: to('P1') }, { label: 'GND → graffetta', color: '#1D1C1F', done: to('GND') }];
+        },
+        why: { q: 'Perché due cavi?', a: 'L\'elettricità fa un giro: esce dal pin 1, passa nell\'oggetto e torna al GND. Se il giro è chiuso, il micro:bit lo sente.' },
+      },
+      {
+        title: 'La moneta', mode: 'build', text: 'Trascina la moneta sul piano di prova, sopra le due graffette.',
+        goal: c => onHost(c, 'coin', 'testPad'),
+      },
+      {
+        title: 'Si accende?', mode: 'code', text: 'Premi Prova! Se compare il cuore, la moneta fa passare l\'elettricità.',
+        goal: c => c.running && c.tested.coin === true && c.icon === 'Heart',
+        why: { q: 'Perché la moneta sì?', a: 'La moneta è di metallo. I metalli fanno passare bene l\'elettricità: sono conduttori.' },
+      },
+      {
+        title: 'Lo scienziato', mode: 'build', text: 'Lascia acceso. Togli la moneta e prova la gomma, il tappo e la banana. Prima indovina: si accenderà?',
+        goal: c => ['eraser', 'plasticCap', 'banana'].every(t => t in c.tested),
+        checklist: c => [['eraser', 'Gomma'], ['plasticCap', 'Tappo di plastica'], ['banana', 'Banana']].map(([t, n]) => ({
+          label: t in c.tested ? `${n}: ${c.tested[t] ? 'conduce' : 'non conduce'}` : `${n}: ?`, done: t in c.tested,
+        })),
+        why: { q: 'Conduttore o isolante?', a: 'Se il cuore si accende, l\'oggetto è un conduttore. Se resta spento, è un isolante: plastica e gomma fermano l\'elettricità.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Lascia sul piano un oggetto che conduce, come la moneta o la banana. Poi nel codice cambia il cuore con un altro disegno e premi Prova!',
+        goal: c => c.runInStep && !c.code.includes('IconNames.Heart') && c.icon !== '' && c.tested.coin !== undefined && padConducts(c),
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2 e un portapile con 2 pile AAA', '2 cavi a coccodrillo', 'un cartoncino e 2 graffette', 'oggetti da provare: una moneta, una banana, una gomma, un tappo di plastica, carta stagnola', 'il foglio dove scrivere: conduce o non conduce?'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli alle graffette.'], ['solo', 'Non collegare mai il 3V con il GND: il micro:bit si può rompere.']],
+    },
+  },
+  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -389,7 +463,7 @@ basic.forever(function () {
 
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
-  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
+  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },
