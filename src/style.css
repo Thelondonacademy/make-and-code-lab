@@ -10,6 +10,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
+body { overflow-x: hidden; }
 body { background: var(--cream); -webkit-font-smoothing: antialiased; }
 button, input, textarea { font-family: inherit; color: inherit; }
 a { color: var(--purple); }
@@ -72,7 +73,7 @@ img { flex: none; }
 .nav a:hover { background: var(--cream); color: var(--ink); }
 
 /* ---------- laboratorio ---------- */
-.ws { height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none; }
+.ws { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; user-select: none; -webkit-user-select: none; }
 .ws textarea, .ws input { user-select: text; }
 .ws-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr) 340px; grid-template-areas: "palette stage guide"; gap: 14px; padding: 14px; position: relative; }
 .palette { grid-area: palette; }
@@ -157,6 +158,8 @@ img { flex: none; }
 @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
 
 .guide h2 { font-size: 26px; font-weight: 800; }
+.guide-title { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.guide-help { display: none; width: 40px; height: 40px; color: var(--purple); flex: none; }
 .guide-top { display: flex; justify-content: space-between; align-items: center; }
 .step-n { font-size: 13px; font-weight: 700; color: var(--grey); }
 .dots { display: flex; gap: 5px; }
@@ -298,4 +301,171 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
   .code-panel { min-height: 620px; }
   .lessons { grid-template-columns: 1fr; }
   .finale-cols { grid-template-columns: 1fr; }
+}
+
+/* ---------- tablet in verticale e telefoni: il banco riempie lo schermo ---------- */
+@media (max-width: 920px) {
+  .ws { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  .ws .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  .ws .brand span { display: none; }
+  .ws .tabs { order: 3; width: 100%; margin: 0; gap: 6px; }
+  .ws .tab { flex: 1; justify-content: center; height: 46px; padding: 0 6px; font-size: 15px; gap: 6px; border-radius: 14px; }
+  .ws .top-right { margin-left: auto; gap: 10px; }
+  .ws .top-right .btn-go { min-height: 48px; font-size: 19px; padding: 0 18px; }
+  .ws-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "guide" "stage" "palette"; gap: 8px; padding: 8px; }
+  .mode-code .ws-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(150px, 30%) minmax(0, 1fr); grid-template-areas: "stage" "code"; }
+  .mode-wire .palette { display: none; }
+  .canvas-wrap { min-height: 0; border-radius: 18px; }
+  .code-panel { min-height: 0; border-radius: 18px; }
+  /* guida compatta in alto */
+  .guide { max-height: 32vh; padding: 10px 12px; gap: 8px; border-radius: 18px; }
+  .guide h2 { font-size: 19px; }
+  .guide .lead { font-size: 15px; line-height: 1.4; }
+  .guide .btn { min-height: 42px; font-size: 15px; }
+  .guide .btn-soft[data-act=listen] { align-self: flex-start; padding: 0 14px; }
+  .check li { padding: 6px 8px; font-size: 14px; }
+  .ck { width: 26px; height: 26px; }
+  .bravo { font-size: 16px; padding: 6px 10px; }
+  .dot { width: 10px; height: 10px; }
+  /* pezzi: una striscia che scorre di lato */
+  .palette { padding: 8px; gap: 6px; border-radius: 18px; overflow: hidden; }
+  .palette h2, .palette-help { display: none; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chip-btn { flex: none; height: 32px; }
+  .parts-grid { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 2px; scrollbar-width: thin; }
+  .part { flex: 0 0 92px; padding: 8px 4px 6px; font-size: 12px; border-radius: 14px; }
+  .part > img { width: 36px; height: 36px; }
+  .part .tag { font-size: 10px; padding: 2px 6px; }
+  .part-info { width: 26px; height: 26px; top: 2px; right: 2px; }
+  .part:hover { transform: none; box-shadow: none; }
+  /* banco */
+  .view-btns { flex-direction: column; right: 8px; bottom: 8px; gap: 6px; }
+  .round { width: 44px; height: 44px; }
+  .round .ico { width: 22px; height: 22px; }
+  .hint { left: 8px; top: 8px; max-width: calc(100% - 70px); padding: 8px 10px; font-size: 14px; gap: 8px; border-radius: 14px; }
+  .hint-run { max-width: calc(100% - 16px); }
+  .mb-btn { width: 48px; height: 48px; font-size: 18px; border-width: 3px; }
+  .mb-ab { width: 64px; font-size: 15px; }
+  .mb-pet { font-size: 15px; padding: 0 12px 0 8px; margin-left: 0; }
+  .wire-colors { left: 8px; width: 54px; padding: 8px 6px; gap: 6px; font-size: 11px; }
+  .swatch { width: 30px; height: 30px; }
+  .sensors { left: 8px; bottom: 8px; }
+  .issue-bar { padding: 8px 10px; gap: 8px; border-radius: 16px; }
+  .issue-icon { width: 36px; height: 36px; border-radius: 10px; }
+  .issue-text b { font-size: 15px; }
+  .issue-text span { font-size: 13px; }
+  .issue-actions .btn { min-height: 38px; padding: 0 10px; font-size: 13px; }
+  .code-head { padding: 8px; gap: 8px; }
+  .code-step { flex: 1 1 100%; font-size: 13px; padding: 6px 8px; }
+  .code-step b { font-size: 15px; }
+  .code-step-n { width: 32px; height: 32px; font-size: 16px; }
+  .code-actions .btn { min-height: 40px; font-size: 14px; padding: 0 12px; width: 100%; }
+  .code-actions { width: 100%; }
+}
+@media (max-width: 760px) {
+  .page .topbar { flex-wrap: nowrap; padding: 8px 10px; }
+  .nav { flex-wrap: nowrap; gap: 2px; }
+  .nav a { height: 46px; padding: 0 12px; }
+  .nav-t { display: none; }
+  .wrap { padding: 16px 12px 32px; gap: 16px; }
+  .wrap h1 { font-size: 28px; }
+  .hello { gap: 10px; }
+  .hello > img { width: 56px; height: 56px; }
+  .hello > div:nth-child(2) { flex: 1 1 100%; }
+  .hello p { font-size: 15.5px; }
+  .name-form { flex-wrap: wrap; }
+  .name-form label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 200px; }
+  .name-form input { margin: 0; width: 100%; }
+  .score-col { width: 100%; flex-direction: row; flex-wrap: wrap; }
+  .score-col > * { flex: 1 1 160px; }
+  .lesson { padding: 14px; gap: 12px; border-radius: 20px; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .badge { width: 54px; height: 54px; }
+  .free { padding: 16px; gap: 12px; }
+  .free b { font-size: 20px; }
+  .free .btn { width: 100%; }
+  .modal-back { padding: 10px; }
+  .modal { padding: 20px 16px; border-radius: 22px; }
+  .modal h2 { font-size: 24px; }
+  .finale h2 { font-size: 28px; }
+  .step-card { padding: 16px 18px; border-radius: 22px; gap: 10px; }
+  .step-head { gap: 10px; }
+  .step-head img { width: 42px; height: 42px; }
+  .step-head h2 { font-size: 23px; }
+  .step-card p { font-size: 18px; }
+  .step-card .btn-go { font-size: 19px; min-height: 52px; }
+  .toast { bottom: 12px; font-size: 14px; }
+}
+@media (max-width: 480px) {
+  .page .brand span { display: none; }
+  .ws .tab .ico { display: none; }
+  .ws .stars { display: none; }
+}
+
+@media (max-width: 920px) {
+  .ws .pill-level { display: flex; flex: 1 1 0; max-width: none; font-size: 13px; padding: 6px 10px; }
+  .code-step { flex-wrap: wrap; }
+  .code-step-txt { flex: 1 1 calc(100% - 50px); }
+}
+@media (max-width: 760px) {
+  /* guida di una riga: il testo completo è nel riquadro del passo (bottone ?) */
+  .guide { gap: 6px; }
+  .guide .lead, .guide .why, .guide [data-act=listen], .guide .link-print { display: none; }
+  .guide-help { display: inline-flex; }
+  .guide-nav { gap: 6px; margin-top: 2px; }
+  .guide .guide-nav .btn { min-height: 38px; font-size: 14px; border-radius: 12px; }
+  .guide .link-btn[data-act=restart] { padding: 2px 6px; font-size: 13px; align-self: center; }
+  .code-step-txt span { display: none; }
+  .code-step [data-act=listen] { display: none; }
+  .code-step { flex-wrap: nowrap; flex: 1 1 0; }
+  .code-actions { width: auto; }
+  .code-actions .btn { width: auto; }
+  .code-head { flex-wrap: nowrap; }
+}
+@media (max-width: 480px) {
+  .hide-xs { display: none; }
+}
+
+/* ---------- telefono in orizzontale: banco a sinistra, guida e pezzi a destra ---------- */
+@media (max-height: 520px) and (orientation: landscape) {
+  .ws { height: 100vh; height: 100dvh; overflow: hidden; }
+  .ws .topbar { flex-wrap: nowrap; gap: 8px; padding: 4px 8px; }
+  .ws .brand span, .ws .pill-level, .ws .stars { display: none; }
+  .ws .tabs { order: 0; width: auto; margin: 0 auto; gap: 6px; }
+  .ws .tab { flex: none; height: 40px; padding: 0 10px; font-size: 14px; border-radius: 12px; }
+  .ws .tab .ico { display: inline-block; }
+  .ws .top-right .btn-go { min-height: 40px; font-size: 16px; padding: 0 14px; box-shadow: 0 3px 0 var(--orange-dark); }
+  .ws-body { grid-template-columns: minmax(0, 1fr) 240px; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "stage guide" "stage palette"; gap: 6px; padding: 6px; }
+  .mode-wire .ws-body { grid-template-areas: "stage guide" "stage guide"; }
+  .mode-code .ws-body { grid-template-columns: 38% minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "stage code"; }
+  .stage { gap: 6px; }
+  .canvas-wrap { min-height: 0; }
+  .code-panel { min-height: 0; }
+  .guide { max-height: none; padding: 8px 10px; gap: 6px; overflow: auto; }
+  .guide .lead, .guide .why, .guide [data-act=listen], .guide .link-print { display: none; }
+  .guide-help { display: inline-flex; }
+  .guide h2 { font-size: 17px; }
+  .guide .guide-nav .btn { min-height: 36px; font-size: 13px; }
+  .palette { padding: 6px; overflow: auto; }
+  .palette h2, .palette-help, .chips { display: none; }
+  .parts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; gap: 6px; }
+  .part { padding: 6px 4px; font-size: 11.5px; }
+  .part > img { width: 32px; height: 32px; }
+  .view-btns { flex-direction: column; right: 6px; bottom: 6px; gap: 4px; }
+  .round { width: 38px; height: 38px; }
+  .hint { padding: 6px 8px; font-size: 13px; }
+  .mb-btn { width: 42px; height: 42px; font-size: 16px; }
+  .mb-ab { width: 56px; }
+  .issue-bar { padding: 6px 8px; }
+  .issue-text span { display: none; }
+  .step-card { max-height: 92vh; overflow: auto; padding: 14px 18px; gap: 8px; }
+  .step-card p { font-size: 16px; }
+  .step-head h2 { font-size: 21px; }
+  .code-head { padding: 6px; flex-wrap: nowrap; }
+  .code-step { flex: 1 1 0; flex-wrap: nowrap; padding: 4px 8px; }
+  .code-step-txt { flex: 1 1 auto; }
+  .code-step-txt span, .code-step [data-act=listen], .code-head .hide-xs { display: none; }
+  .code-step-n { width: 30px; height: 30px; font-size: 15px; }
+  .code-actions { width: auto; }
+  .code-actions .btn, .code-step .btn { width: auto; min-height: 36px; }
 }

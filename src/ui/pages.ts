@@ -5,10 +5,10 @@ import { el, esc, header, img, safetyTag } from './common';
 import { loadProgress, getName, setName, getUnlockAll, setUnlockAll } from '../store';
 
 const NAV = (page: string) => `<nav class="nav" aria-label="Sezioni">
-  <a href="#/" ${page === 'home' ? 'aria-current="page"' : ''}>${icon('ph:flag-fill', 20)}Il percorso</a>
-  <a href="#/libero">${img('toolbox.svg', 24)}Laboratorio libero</a>
-  <a href="#/sicurezza" ${page === 'safe' ? 'aria-current="page"' : ''}>${icon('ph:shield-check-fill', 22, 'color:#2E8B57')}Sicurezza</a>
-  <a href="#/crediti" ${page === 'credits' ? 'aria-current="page"' : ''}>${icon('ph:info-fill', 22)}Crediti</a>
+  <a href="#/" aria-label="Il percorso" ${page === 'home' ? 'aria-current="page"' : ''}>${icon('ph:flag-fill', 20)}<span class="nav-t">Il percorso</span></a>
+  <a href="#/libero" aria-label="Laboratorio libero">${img('toolbox.svg', 24)}<span class="nav-t">Laboratorio libero</span></a>
+  <a href="#/sicurezza" aria-label="Sicurezza" ${page === 'safe' ? 'aria-current="page"' : ''}>${icon('ph:shield-check-fill', 22, 'color:#2E8B57')}<span class="nav-t">Sicurezza</span></a>
+  <a href="#/crediti" aria-label="Crediti" ${page === 'credits' ? 'aria-current="page"' : ''}>${icon('ph:info-fill', 22)}<span class="nav-t">Crediti</span></a>
 </nav>`;
 
 const COLORS = ['#F6520A', '#833CA3', '#F7941D', '#F6520A', '#833CA3', '#F7941D'];

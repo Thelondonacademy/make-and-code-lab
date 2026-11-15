@@ -135,7 +135,6 @@ export class Workspace {
             <div class="tip" hidden></div>
             <div class="sel-tools" hidden></div>
             <div class="ctx-menu" role="menu" hidden></div>
-            <div class="step-pop" hidden></div>
             <div class="view-btns">
               <button class="round" data-act="undo" aria-label="Annulla l'ultima mossa">${icon('ph:arrow-counter-clockwise-bold', 26)}</button>
               <button class="round" data-act="fit" aria-label="Guarda tutto il banco">${icon('ph:cube-fill', 26)}</button>
@@ -154,11 +153,12 @@ export class Workspace {
           <div class="issue-bar" hidden></div>
         </main>
         <aside class="guide" aria-label="Guida del progetto"></aside>
+        <div class="step-pop" hidden></div>
         <section class="code-panel" aria-label="Programma">
           <div class="code-head">
             <div class="code-step"></div>
             <div class="code-actions">
-              <button class="btn btn-soft" data-act="download">${icon('ph:usb-fill', 22)}Manda al micro:bit vero</button>
+              <button class="btn btn-soft" data-act="download" aria-label="Manda al micro:bit vero">${icon('ph:usb-fill', 22)}<span class="hide-xs">Manda al micro:bit vero</span></button>
             </div>
           </div>
           <div class="mk-host"><div class="mk-loading">${img('robot.svg', 64)}<p>Sto aprendo MakeCode…</p></div></div>
@@ -980,7 +980,7 @@ export class Workspace {
     const list = s.checklist?.(this.ctx());
     g.innerHTML = `
       <div class="guide-top"><span class="step-n">Passo ${this.step + 1} di ${L.steps.length}</span><span class="dots">${dots}</span></div>
-      <h2>${esc(s.title)}</h2>
+      <div class="guide-title"><h2>${esc(s.title)}</h2><button class="icon-btn guide-help" data-act="step-open" aria-label="Cosa devo fare?">${icon('ph:question-fill', 22)}</button></div>
       <p class="lead">${esc(s.text)}</p>
       ${canSpeak() ? `<button class="btn btn-soft" data-act="listen">${icon('ph:speaker-high-fill', 22)}Ascolta</button>` : ''}
       ${list ? `<ul class="check">${list.map((c, i) => `<li class="${c.done ? 'ok' : ''}"><span class="ck">${c.done ? icon('ph:check-bold', 18) : i + 1}</span>${c.color ? `<span class="sw" style="background:${c.color}"></span>` : ''}<span>${esc(c.label)}</span></li>`).join('')}</ul>` : ''}
@@ -994,7 +994,7 @@ export class Workspace {
       <button class="link-btn" data-act="restart">${icon('ph:arrow-counter-clockwise-bold', 16)}Ricomincia il progetto</button>`;
     this.q('.code-step').innerHTML = `<span class="code-step-n">${this.step + 1}</span><div class="code-step-txt"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>
       ${canSpeak() ? `<button class="btn btn-small" data-act="listen" aria-label="Ascolta">${icon('ph:speaker-high-fill', 18)}</button>` : ''}
-      <button class="btn btn-small" data-act="step-open">${icon('ph:question-fill', 18)}Cosa devo fare?</button>`;
+      <button class="btn btn-small" data-act="step-open">${icon('ph:question-fill', 18)}<span class="hide-xs">Cosa devo fare?</span></button>`;
   }
 
   /** Il passo nuovo, grande e al centro dello schermo: i bambini piccoli non leggono la colonna a destra. */
