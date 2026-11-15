@@ -245,7 +245,7 @@ input.onGesture(Gesture.Shake, function () {
     }
 })
 `,
-    namespaces: ['basic', 'input', 'math', 'variables', 'logic'],
+    namespaces: ['basic', 'input', 'Math', 'variables', 'logic'],
     dependencies: { core: '*' },
     steps: [
       { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
