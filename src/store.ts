@@ -2,7 +2,7 @@
 import type { PartInst, Wire } from './sim/circuit';
 import { LEVELS } from './data/levels';
 
-export interface SavedWork { parts: PartInst[]; wires: Wire[]; mk?: any; step?: number }
+export interface SavedWork { parts: PartInst[]; wires: Wire[]; mk?: any; step?: number; rev?: number }
 export interface Progress { stars: Record<string, number> }
 
 const K = 'mcl-v1-';

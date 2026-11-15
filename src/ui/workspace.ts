@@ -62,10 +62,12 @@ export class Workspace {
 
   constructor(public level: Level, private host: HTMLElement) {
     this.code = level.code;
-    const saved = loadWork(level.id);
+    const saved0 = loadWork(level.id);
+    const saved = saved0 && (saved0.rev ?? 1) === (level.rev ?? 1) ? saved0 : null; // livello rifatto: si riparte da capo
     if (saved) {
-      this.parts = saved.parts || [];
-      this.wires = saved.wires || [];
+      this.parts = (saved.parts || []).filter(p => PARTS[p.type]);
+      const ids = new Set(this.parts.map(p => p.id));
+      this.wires = (saved.wires || []).filter(w => ids.has(w.a.split(':')[0]) && ids.has(w.b.split(':')[0]));
       this.mkProject = saved.mk || null;
       if (saved.mk?.text?.['main.ts'] !== undefined) this.code = saved.mk.text['main.ts'];
       this.codeChanged = norm(this.code) !== norm(level.code);
@@ -257,10 +259,13 @@ export class Workspace {
           const was = p.attachedTo;
           p.x = m.x; p.z = m.z;
           p.attachedTo = moves.length === 1 ? attachTo || undefined : undefined;
+          if (p.attachedTo !== was) this.markRest(p);
           if (p.attachedTo && !was) attachedNow = p;
         }
         if (attachedNow) toast(this.attachMsg(attachedNow), { kind: 'ok', ms: 4500 });
         this.sync();
+        // attaccato in alto (servo sul cartone del latte): se esce dalla vista, la vista si allarga
+        if (attachedNow && this.parts.some(p => p.type === 'milkCarton') && !this.scene.isVisible(attachedNow.id)) this.scene.fit(this.parts);
       },
       onSelect: (ids, wire) => { this.selIds = ids; this.selWire = wire; this.hideCtx(); this.renderSelTools(); },
       onTerminal: ref => { if (this.selIds.length || this.selWire) this.scene.setSelection([], null); this.clickTerminal(ref); },
@@ -275,7 +280,7 @@ export class Workspace {
       onLogo: down => this.rt.touchLogo(down),
       onPad: (pin, down) => this.rt.touchPin(pin, down),
       onFoil: (id, down) => this.touchFoil(id, down),
-      onFrame: dt => { this.hw.step(dt); this.catapultFrame(); if (this.selIds.length || this.selWire) this.positionSelTools(); },
+      onFrame: dt => { this.hw.step(dt); this.catapultFrame(dt); if (this.selIds.length || this.selWire) this.positionSelTools(); },
       onDrop: (type, x, z) => this.addPart(type, x, z),
     });
     this.scene.onHover = (ref, x, y) => {
@@ -466,7 +471,7 @@ export class Workspace {
     // i materiali attaccati a un servo tolto restano sul banco
     for (const p of this.parts) if (p.attachedTo && del.has(p.attachedTo) && !del.has(p.id)) {
       const host = this.parts.find(h => h.id === p.attachedTo)!;
-      p.attachedTo = undefined; p.x = host.x + 4; p.z = host.z;
+      p.attachedTo = undefined; delete p.rest; p.x = host.x + 4; p.z = host.z;
     }
     this.parts = this.parts.filter(p => !del.has(p.id));
     this.wires = this.wires.filter(w => !del.has(w.a.split(':')[0]) && !del.has(w.b.split(':')[0]));
@@ -498,6 +503,7 @@ export class Workspace {
     this.pushUndo();
     const host = this.parts.find(h => h.id === p.attachedTo);
     p.attachedTo = undefined;
+    delete p.rest;
     if (host) { p.x = host.x + 5; p.z = host.z + 3; }
     this.sync();
   }
@@ -660,6 +666,7 @@ export class Workspace {
       this.stopRun();
       this.tested = {};
       this.game = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
+      this.cata.clear();
       clearWork(this.level.id);
       this.parts = structuredClone(this.level.start.parts);
       this.wires = structuredClone(this.level.start.wires);
@@ -872,46 +879,92 @@ export class Workspace {
     this.friends.clear();
   }
 
+  /** Spago o fermo legato al braccio del servo: ricorda a che angolo era il servo (è la calibrazione). */
+  private markRest(p: PartInst) {
+    const host = p.attachedTo ? this.parts.find(h => h.id === p.attachedTo) : null;
+    if (host?.type === 'servo') p.rest = Math.round(this.hw.servoAngle.get(host.id) ?? 90);
+    else delete p.rest;
+  }
+
   // ---------- la catapulta ----------
-  private cata = new Map<string, { loaded: boolean; start: number }>();
-  /** Il braccio carico (indietro) che gira veloce in avanti lancia la pallina: più gira, più va lontano. */
-  private catapultFrame() {
-    for (const arm of this.parts.filter(p => p.type === 'catapultArm' && p.attachedTo)) {
-      const sv = this.parts.find(p => p.id === arm.attachedTo);
-      const base = sv && this.parts.find(p => p.id === sv.attachedTo && p.type === 'catapultBase');
-      if (!sv || !base) continue;
-      const a = this.hw.servoAngle.get(sv.id) ?? 90;
-      const target = this.hw.servoTarget.get(sv.id) ?? a;
-      let st = this.cata.get(arm.id);
-      if (!st) { st = { loaded: a <= 25, start: a }; this.cata.set(arm.id, st); this.scene.setBall(arm.id, st.loaded); }
-      if (!this.running) { if (!st.loaded) { st.loaded = true; this.scene.setBall(arm.id, true); } st.start = a; continue; }
-      if (a <= 25 && !st.loaded) { st.loaded = true; this.scene.setBall(arm.id, true); }
-      if (st.loaded && a <= 25) st.start = Math.min(st.start, a);
-      if (st.loaded && Math.abs(target - a) < 0.5 && a - st.start >= 40) {
-        const swing = a - st.start;
-        const from = this.scene.ballWorld(arm.id);
-        st.loaded = false; st.start = a;
-        this.scene.setBall(arm.id, false);
-        if (!from) continue;
-        const ang = ((base.rot || 0) * Math.PI) / 4;
-        let fwd = { x: -Math.sin(ang), z: -Math.cos(ang) }; // davanti alla base (verso -z)
-        const bk = this.parts.find(p => p.type === 'bucket');
-        if (bk) {
-          // se il bersaglio è più o meno davanti, la catapulta è puntata verso di lui: conta solo quanto lontano lanci
-          const bx = bk.x - from.x, bz = bk.z - from.z, bl = Math.hypot(bx, bz) || 1;
-          if ((bx * fwd.x + bz * fwd.z) / bl > Math.cos((70 * Math.PI) / 180)) fwd = { x: bx / bl, z: bz / bl };
-        }
-        const d = Math.max(0, swing - 30) * 0.15;
-        const land = new (from.constructor as any)(from.x + fwd.x * d, 0.55, from.z + fwd.z * d);
-        this.scene.throwBall(from, land);
-        this.game.throws++;
-        const hit = !!bk && Math.hypot(land.x - bk.x, land.z - bk.z) < 3;
-        if (hit) this.game.hits++;
-        const short = bk ? Math.hypot(land.x - from.x, land.z - from.z) < Math.hypot(bk.x - from.x, bk.z - from.z) : false;
-        setTimeout(() => toast(hit ? `${img('bullseye.svg', 26)}Centro! La pallina è nel bersaglio.` : `${img('catapult-arm.svg', 26)}${short ? 'Troppo corto: fai girare il braccio di più (numero più grande).' : 'Troppo lontano: fai girare il braccio di meno (numero più piccolo).'}`, { kind: hit ? 'ok' : 'info', ms: 2800 }), 500 + d * 30);
-        this.evaluate();
+  // Il servo non lancia: è il grilletto. Il fermo sul suo braccio tiene giù la catapulta carica;
+  // quando il servo gira abbastanza, il fermo si sposta e l'elastico fa scattare il braccio.
+  private cata = new Map<string, { loaded: boolean; deg: number; firing: boolean; told: boolean }>();
+  private cataParts(base: PartInst) {
+    const servo = this.parts.find(p => p.type === 'servo' && p.attachedTo === base.id);
+    const latch = servo && this.parts.find(p => p.type === 'catapultLatch' && p.attachedTo === servo.id);
+    return { servo, latch };
+  }
+  /** Il fermo è sopra il braccio? (entro 35° da dove l'hai montato) */
+  private latchClosed(base: PartInst) {
+    const { servo, latch } = this.cataParts(base);
+    if (!servo || !latch) return false;
+    return Math.abs((this.hw.servoAngle.get(servo.id) ?? 90) - (latch.rest ?? 90)) < 35;
+  }
+  private cataState(base: PartInst) {
+    let st = this.cata.get(base.id);
+    if (!st) { st = { loaded: false, deg: 100, firing: false, told: false }; this.cata.set(base.id, st); this.scene.setCatapult(base.id, 100, false); }
+    return st;
+  }
+  private catapultFrame(dt: number) {
+    if (!this.scene) return; // il primo fotogramma arriva mentre la scena si sta ancora creando
+    for (const base of this.parts.filter(p => p.type === 'catapultBase')) {
+      const st = this.cataState(base);
+      if (st.firing) {
+        st.deg = Math.min(100, st.deg + dt * 1100);
+        this.scene.setCatapult(base.id, st.deg, true);
+        if (st.deg >= 100) { st.firing = false; this.launch(base); }
+        continue;
       }
+      if (!st.loaded || !this.running) continue;
+      if (!this.latchClosed(base)) { st.loaded = false; st.firing = true; st.told = false; continue; }
+      // il servo si è mosso ed è arrivato, ma il fermo è ancora sopra il braccio
+      const { servo, latch } = this.cataParts(base);
+      const a = this.hw.servoAngle.get(servo!.id) ?? 90, target = this.hw.servoTarget.get(servo!.id) ?? a;
+      const moved = Math.abs(target - (latch!.rest ?? 90)) > 2;
+      if (moved && Math.abs(target - a) < 0.5 && !st.told) {
+        st.told = true;
+        toast(`${img('catapult-latch.svg', 26)}Il fermo si è mosso, ma troppo poco: il braccio è ancora bloccato. Fai girare il servo di più.`, { kind: 'info', ms: 4000 });
+      }
+      if (!moved) st.told = false;
     }
+  }
+  /** Il braccio sbatte sulla sbarra: la pallina vola in avanti. La forza è dell'elastico, quindi va sempre lontano uguale. */
+  private launch(base: PartInst) {
+    const from = this.scene.ballWorld(base.id);
+    this.scene.setCatapult(base.id, 100, false);
+    if (!from) return;
+    const ang = ((base.rot || 0) * Math.PI) / 4;
+    let fwd = { x: -Math.sin(ang), z: -Math.cos(ang) }; // davanti alla catapulta (verso -z)
+    const bk = this.parts.find(p => p.type === 'bucket');
+    if (bk) {
+      // se il bersaglio è più o meno davanti, la catapulta è puntata verso di lui
+      const bx = bk.x - from.x, bz = bk.z - from.z, bl = Math.hypot(bx, bz) || 1;
+      if ((bx * fwd.x + bz * fwd.z) / bl > Math.cos((60 * Math.PI) / 180)) fwd = { x: bx / bl, z: bz / bl };
+    }
+    const D = 12;
+    const land = new (from.constructor as any)(from.x + fwd.x * D, 0.6, from.z + fwd.z * D);
+    this.scene.throwBall(from, land);
+    this.game.throws++;
+    const hit = !!bk && Math.hypot(land.x - bk.x, land.z - bk.z) < 2.6;
+    if (hit) this.game.hits++;
+    setTimeout(() => toast(hit ? `${img('bullseye.svg', 26)}Centro! La pallina è nel bersaglio.` : `${img('catapult-base.svg', 26)}Via! Sposta il bersaglio dove cade la pallina.`, { kind: hit ? 'ok' : 'info', ms: 2800 }), 900);
+    this.evaluate();
+  }
+  /** "Carica": tiri giù il braccio. Resta giù solo se il fermo è al suo posto. */
+  loadCatapult() {
+    const base = this.parts.find(p => p.type === 'catapultBase');
+    if (!base) return;
+    const st = this.cataState(base);
+    const { servo, latch } = this.cataParts(base);
+    if (st.firing) return;
+    if (st.loaded) { toast(`${img('catapult-base.svg', 26)}È già carica: premi A!`); return; }
+    if (!servo) { toast(`${img('servo.svg', 26)}Manca il servo: senza il grilletto il braccio non resta giù.`); return; }
+    if (!latch) { toast(`${img('catapult-latch.svg', 26)}Manca il fermo sul braccio del servo: il braccio torna su da solo.`); return; }
+    if (!this.latchClosed(base)) { toast(`${img('catapult-latch.svg', 26)}Il fermo non è sopra il braccio: il servo deve tornare dove l'hai calibrato.`); return; }
+    st.loaded = true; st.deg = 0; st.told = false;
+    this.scene.setCatapult(base.id, 0, true);
+    toast(`${img('catapult-base.svg', 26)}Carica! Il fermo tiene giù il braccio. Ora premi A.`, { kind: 'ok', ms: 3000 });
   }
 
   // ---------- gioco del filo ----------
@@ -988,10 +1041,10 @@ export class Workspace {
     this.scene.setNight(this.roomDark);
   }
   toggleRoom() { this.roomDark = !this.roomDark; this.applyLight(); this.renderHint(); }
-  cover(on: boolean) { this.covered = on; this.applyLight(); this.q<HTMLElement>('.mb-cover')?.classList.toggle('down', on); }
+  cover(on: boolean) { this.covered = on; this.applyLight(); this.scene.setCookie(on); this.q<HTMLElement>('.mb-cover')?.classList.toggle('down', on); }
 
   private setRunning(r: boolean) {
-    if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); }
+    if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); this.scene.setCookie(false); }
     this.running = r;
     if (!r) { this.closeBuzz(); this.hunt?.close(); this.stopFriends(); }
     this.padTouch.clear();
@@ -1085,6 +1138,7 @@ export class Workspace {
       runInStep: this.running && this.runEpoch === this.stepEpoch && norm(this.runCode) === norm(this.code),
       icon: this.running ? this.rt.lastIcon : '', tested: this.tested, game: this.game,
       friend: this.running ? [...this.friends.values()][0]?.stats ?? null : null,
+      angles: Object.fromEntries(this.hw.servoAngle),
     };
   }
 
@@ -1187,6 +1241,10 @@ export class Workspace {
     if (host === 'testPad') return `${img('paperclip.svg', 24)}Sul piano di prova! Tocca le due graffette.`;
     if (host === 'cardStand') return `${img('package.svg', 24)}Appoggiato al leggio! Nel mondo vero lo fermi con un po' di nastro.`;
     if (host === 'strap') return `${img('socks.svg', 24)}Allacciato alla fascia! Nel mondo vero lo tieni fermo con l'elastico o il velcro.`;
+    if (host === 'milkCarton') return p.type === 'microbit' ? `${img('milk.svg', 24)}Il micro:bit è sotto la bocca: è l'occhio del mostro! Nel mondo vero lo fermi con il nastro di carta.` : `${img('tape.svg', 24)}Servo sul tappo! Nel mondo vero lo fissi con il biadesivo spesso.`;
+    if (host === 'catapultBase') return `${img('tape.svg', 24)}Servo accanto al braccio! Nel mondo vero lo fissi con il biadesivo spesso.`;
+    if (p.type === 'milkString') return (p.rest ?? 90) >= 170 ? `${img('string.svg', 24)}Spago legato con il servo a 180: la bocca è chiusa. Calibrato!` : `${img('string.svg', 24)}Spago legato, ma il servo non era a 180: la bocca non si chiude bene. Stacca lo spago, premi Prova! e legalo di nuovo.`;
+    if (p.type === 'catapultLatch') return Math.abs((p.rest ?? 90) - 90) < 10 ? `${img('catapult-latch.svg', 24)}Fermo montato con il servo a 90: sta sopra il braccio. Calibrato!` : `${img('catapult-latch.svg', 24)}Fermo montato, ma il servo non era a 90. Staccalo, premi Prova! e montalo di nuovo.`;
     if (p.type === 'petTail') return `${img('luna-tail.png', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
     return `${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`;
   }
@@ -1252,7 +1310,7 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">${this.friends.size ? 'Il tuo micro:bit' : 'Pulsanti del micro:bit'}</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.friends.size ? `<span class="mb-label">Il micro:bit dell'amico</span><button class="mb-btn mb-friend" data-fbtn="A" aria-label="Pulsante A dell'amico">A</button><button class="mb-btn mb-friend" data-fbtn="B" aria-label="Pulsante B dell'amico">B</button>` : ''}${/RadioPacketProperty\.SignalStrength/.test(this.code) && this.friends.size ? `<button class="mb-btn mb-pet mb-hunt" aria-label="Gioca alla caccia al tesoro">${img('compass.svg', 26)}Cerca il tesoro</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button>${this.parts.some(p => p.type === 'milkCarton') ? `<button class="mb-btn mb-pet mb-cover" aria-label="Avvicina il biscotto (tieni premuto)">${img('cookie.svg', 26)}Biscotto</button>` : `<button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>`}` : ''}${this.parts.some(p => p.type === 'catapultBase') ? `<button class="mb-btn mb-pet mb-load" aria-label="Carica la catapulta">${img('catapult-base.svg', 26)}Carica</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.friends.size ? `<span class="mb-label">Il micro:bit dell'amico</span><button class="mb-btn mb-friend" data-fbtn="A" aria-label="Pulsante A dell'amico">A</button><button class="mb-btn mb-friend" data-fbtn="B" aria-label="Pulsante B dell'amico">B</button>` : ''}${/RadioPacketProperty\.SignalStrength/.test(this.code) && this.friends.size ? `<button class="mb-btn mb-pet mb-hunt" aria-label="Gioca alla caccia al tesoro">${img('compass.svg', 26)}Cerca il tesoro</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
@@ -1260,6 +1318,7 @@ export class Workspace {
     h.classList.toggle('hint-run', this.running);
     h.querySelector<HTMLElement>('.mb-light')?.addEventListener('click', () => this.toggleRoom());
     h.querySelector<HTMLElement>('.mb-buzz')?.addEventListener('click', () => this.openBuzz());
+    h.querySelector<HTMLElement>('.mb-load')?.addEventListener('click', () => this.loadCatapult());
     for (const fb of h.querySelectorAll<HTMLElement>('.mb-fruit')) {
       const fid = fb.dataset.fruit!;
       const press = (d: boolean) => { this.touchFoil(fid, d); fb.classList.toggle('down', d); };
@@ -1354,7 +1413,7 @@ export class Workspace {
   }
 
   private persist() {
-    saveWork(this.level.id, { parts: this.parts, wires: this.wires, mk: this.mkProject || { text: { 'main.ts': this.code } }, step: this.step });
+    saveWork(this.level.id, { parts: this.parts, wires: this.wires, mk: this.mkProject || { text: { 'main.ts': this.code } }, step: this.step, rev: this.level.rev });
   }
 
   // ---------- comandi per i test automatici ----------
@@ -1364,7 +1423,10 @@ export class Workspace {
       ws: this,
       add: (type: string, x?: number, z?: number) => { this.addPart(type, x, z); return this.parts.at(-1)!.id; },
       connect: (a: string, b: string) => { this.pending = null; this.clickTerminal(a); this.clickTerminal(b); return this.wires.length; },
-      attach: (id: string, servo: string) => { const p = this.parts.find(p => p.id === id)!; p.attachedTo = servo; this.sync(); },
+      attach: (id: string, servo: string) => { const p = this.parts.find(p => p.id === id)!; p.attachedTo = servo; this.markRest(p); this.sync(); },
+      loadCata: () => this.loadCatapult(),
+      cataState: () => Object.fromEntries(this.cata),
+      cover: (on: boolean) => this.cover(on),
       code: (ts: string) => this.setCode(ts),
       run: () => this.run(),
       stop: () => this.stopRun(),

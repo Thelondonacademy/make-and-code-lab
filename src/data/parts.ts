@@ -54,7 +54,7 @@ const padZ = MB.d / 2 - 0.45;
 
 export const PARTS: Record<string, PartDef> = {
   microbit: {
-    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg', mountOn: 'strap', mountAlso: 'cardStand',
+    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg', mountOn: 'strap', mountAlso: ['cardStand', 'milkCarton'],
     size: [MB.w, MB.h, MB.d],
     terminals: [
       { id: 'P0', label: 'pin 0', kind: 'pad', pos: [-3.05, MB.h, padZ] },
@@ -121,7 +121,7 @@ export const PARTS: Record<string, PartDef> = {
         'Il micro:bit gli dice un numero da 0 a 180. Il braccio gira fin lì.',
         'Rosso e marrone portano l\'energia. L\'arancione porta il messaggio.',
       ],
-      sicurezza: [['solo', 'Attaccare i coccodrilli ai fili.'], ['soloAdulto', 'Incollare il servo con la colla a caldo.']],
+      sicurezza: [['adulto', 'Attaccare i coccodrilli ai fili, con un giro di nastro isolante.'], ['solo', 'Fissare il servo con il biadesivo spesso.']],
       attenzione: 'Non girare il braccio con le mani: dentro ci sono ingranaggi piccoli che si rompono.',
       mondo: 'un servo SG90 e 3 cavi a coccodrillo',
     },
@@ -361,33 +361,43 @@ export const PARTS: Record<string, PartDef> = {
   },
   milkCarton: {
     type: 'milkCarton', name: 'Cartone del latte', category: 'materiali', icon: 'milk.svg',
-    size: [6, 11.5, 6], terminals: [],
+    size: [10, 19.5, 10], terminals: [],
     card: {
       cosa: 'Un cartone del latte vuoto e pulito: diventa la testa del mostro!',
-      come: ['Il servo sta sopra la testa. Un filo va dal suo braccio alla bocca: quando il braccio gira, tira il filo e la bocca si apre.', 'Con il pulsante A la bocca si apre, con il pulsante B si chiude.'],
-      sicurezza: [['adulto', 'Ritagliare la bocca nel cartone: lo fa un adulto.'], ['solo', 'Decorare il mostro: occhi, denti, capelli.']],
-      mondo: 'un cartone del latte o del succo, lavato e asciutto',
+      come: ['Il servo sta sul tappo. Uno spago va dal suo braccio alla bocca: quando il braccio gira, tira lo spago e la bocca si apre.', 'Sotto la bocca c\'è il micro:bit: è l\'occhio del mostro. Sente la luce e capisce quando arriva un biscotto.'],
+      sicurezza: [['adulto', 'Ritagliare la bocca nel cartone: lo fa l\'adulto prima.'], ['solo', 'Incollare il modello, disegnare occhi e denti.']],
+      mondo: 'un cartone del latte con il tappo a vite, lavato e asciutto',
+    },
+  },
+  milkString: {
+    type: 'milkString', name: 'Spago e graffetta', category: 'materiali', icon: 'string.svg', material: true,
+    size: [3.4, 0.8, 3.4], terminals: [],
+    card: {
+      cosa: 'Uno spago con una graffetta. Collega la bocca del mostro al braccio del servo.',
+      come: ['Un capo è attaccato alla bocca, dietro. L\'altro si lega al braccio del servo.', 'Prima calibra: servo a 180, bocca chiusa. Solo dopo lega lo spago.'],
+      sicurezza: [['solo', 'Legare lo spago e fermarlo con il nastro di carta.']],
+      mondo: 'uno spago (va bene quello di una bustina di tè) e una graffetta',
     },
   },
   catapultBase: {
-    type: 'catapultBase', name: 'Base della catapulta', category: 'materiali', icon: 'catapult-base.svg',
-    size: [7, 3, 9], terminals: [],
+    type: 'catapultBase', name: 'Catapulta', category: 'materiali', icon: 'catapult-base.svg',
+    size: [9, 4, 13], terminals: [],
     card: {
-      cosa: 'Una scatola di cartone: è la base della catapulta.',
-      come: ['Il servo si sdraia sopra la scatola, con il braccio di lato.', 'Il braccio lancia la pallina in avanti.'],
-      sicurezza: [['adulto', 'Fissare il servo con la colla a caldo o il nastro biadesivo.']],
-      mondo: 'una scatola di cartone piccola (va bene quella delle scarpe da bambino)',
+      cosa: 'Una catapulta di cartone e bastoncini. Un elastico tira il braccio verso l\'alto.',
+      come: ['Per caricarla tiri giù il braccio. Il fermo sul servo lo tiene giù.', 'Quando il servo sposta il fermo, l\'elastico fa scattare il braccio e la pallina vola!'],
+      sicurezza: [['adulto', 'Caricare la catapulta, se il servo non ce la fa a sganciarla.'], ['solo', 'Costruirla con biadesivo e nastro di carta.']],
+      attenzione: 'Elastico morbido, solo palline di carta, e mai verso le persone.',
+      mondo: 'i materiali del tutorial, un elastico morbido, palline di carta o pon pon',
     },
   },
-  catapultArm: {
-    type: 'catapultArm', name: 'Braccio con cucchiaio', category: 'materiali', icon: 'catapult-arm.svg', material: true,
-    size: [8, 1, 1.6], terminals: [],
+  catapultLatch: {
+    type: 'catapultLatch', name: 'Fermo (il grilletto)', category: 'materiali', icon: 'catapult-latch.svg', material: true,
+    size: [6, 0.6, 1.2], terminals: [],
     card: {
-      cosa: 'Un bastoncino del gelato con un tappo in cima: è il cucchiaio che lancia la pallina.',
-      come: ['Si attacca al braccio del servo. Quando il servo gira veloce, la pallina vola!', 'Più il braccio gira, più la pallina va lontano.'],
-      sicurezza: [['adulto', 'Fissarlo al braccio del servo con la colla a caldo.']],
-      attenzione: 'Lancia solo palline di carta, e mai verso le persone.',
-      mondo: 'un bastoncino del gelato, un tappo di bottiglia, una pallina di carta o stagnola',
+      cosa: 'Un pezzo di bastoncino del gelato sul braccio del servo. È il grilletto della catapulta.',
+      come: ['Quando è sopra il braccio della catapulta, lo tiene giù, carico.', 'Il servo gira, il fermo si sposta e... via!'],
+      sicurezza: [['solo', 'Fissarlo al braccio del servo con il biadesivo.']],
+      mondo: 'mezzo bastoncino del gelato',
     },
   },
   bucket: {
@@ -395,9 +405,19 @@ export const PARTS: Record<string, PartDef> = {
     size: [5, 2.5, 5], terminals: [],
     card: {
       cosa: 'Una scatola o un bicchiere grande: il bersaglio da colpire.',
-      come: ['Mettilo davanti alla catapulta. Riesci a far cadere la pallina dentro?'],
+      come: ['Mettilo dove cade la pallina. Riesci a fare centro?'],
       sicurezza: [['solo', 'Spostare il bersaglio per rendere il gioco più facile o più difficile.']],
       mondo: 'una scatola aperta o un cestino',
+    },
+  },
+  tape: {
+    type: 'tape', name: 'Biadesivo e nastro di carta', category: 'attrezzi', icon: 'tape.svg', safety: 'solo', tool: true,
+    size: [0, 0, 0], terminals: [],
+    card: {
+      cosa: 'Il biadesivo spesso e il nastro di carta tengono insieme cartone, servo e spago.',
+      come: ['Il biadesivo spesso attacca il servo al cartone.', 'Il nastro di carta ferma lo spago e i coccodrilli. Si stacca senza rompere niente.'],
+      sicurezza: [['solo', 'Usare il biadesivo e il nastro di carta.']],
+      mondo: 'un rotolo di biadesivo spesso e uno di nastro di carta',
     },
   },
   glueStick: {
@@ -433,7 +453,7 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'apple', 'lemon', 'orange', 'milkCarton', 'catapultBase', 'catapultArm', 'bucket', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'apple', 'lemon', 'orange', 'milkCarton', 'milkString', 'catapultBase', 'catapultLatch', 'bucket', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'tape', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
 export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);

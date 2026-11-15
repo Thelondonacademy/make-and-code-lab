@@ -33,7 +33,8 @@ export class Hardware implements Bridge {
     this.wires = wires;
     this.analysis = analyze(parts, wires);
     this.mbId = parts.find(p => p.type === 'microbit')?.id ?? null;
-    for (const s of parts.filter(p => p.type === 'servo')) if (!this.servoAngle.has(s.id)) this.servoAngle.set(s.id, 90);
+    // un servo nuovo parte a 90; se ha già qualcosa legato al braccio (spago, fermo), parte dov'era calibrato
+    for (const s of parts.filter(p => p.type === 'servo')) if (!this.servoAngle.has(s.id)) this.servoAngle.set(s.id, parts.find(m => m.attachedTo === s.id && m.rest !== undefined)?.rest ?? 90);
     this.updateLeds();
   }
 

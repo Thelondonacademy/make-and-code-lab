@@ -472,16 +472,40 @@ radio.sendNumber(0)`);
 });
 
 describe('Mostro del latte e catapulta', () => {
-  it('la bocca: 180 chiusa, 100 tutta aperta', async () => {
+  it('la bocca: chiusa dove hai legato lo spago, aperta quando il servo torna indietro', async () => {
     const { jawOpen } = await import('../src/scene/builders');
-    expect(jawOpen(180)).toBe(0);
-    expect(jawOpen(100)).toBeCloseTo(1.15);
-    expect(jawOpen(140)).toBeGreaterThan(0);
-    expect(jawOpen(140)).toBeLessThan(jawOpen(100));
+    expect(jawOpen(180, 180)).toBe(0);
+    expect(jawOpen(100, 180)).toBeCloseTo(1.1);
+    expect(jawOpen(140, 180)).toBeGreaterThan(0);
+    expect(jawOpen(140, 180)).toBeLessThan(jawOpen(100, 180));
+    // spago legato con il servo storto (non calibrato): la bocca non si apre più
+    expect(jawOpen(100, 90)).toBe(0);
   });
-  it('il servo si monta su Luna, sul mostro e sulla catapulta', async () => {
+  it('il servo si monta su Luna, sul mostro e sulla catapulta; il micro:bit fa da occhio al mostro', async () => {
     const { mountsOf } = await import('../src/data/parts');
     expect(mountsOf('servo')).toEqual(['petBody', 'milkCarton', 'catapultBase']);
-    expect(mountsOf('catapultArm')).toEqual(['horn']);
+    expect(mountsOf('microbit')).toEqual(['strap', 'cardStand', 'milkCarton']);
+    expect(mountsOf('catapultLatch')).toEqual(['horn']);
+    expect(mountsOf('milkString')).toEqual(['horn']);
+  });
+  it('il codice del mostro: buio = bocca aperta, luce = bocca chiusa', async () => {
+    const { LEVELS } = await import('../src/data/levels');
+    const lv = LEVELS.find(l => l.id === 'mostro')!;
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    const writes = { at: (i: number) => f.servo.at(i)?.[1] };
+    rt.setSensor('light', 200);
+    rt.start(lv.code);
+    await wait(60);
+    expect(writes.at(-1)).toBe(180);
+    rt.setSensor('light', 0);
+    await wait(60);
+    expect(writes.at(-1)).toBe(100);
+    rt.stop();
+  });
+  it('il servo che ha già lo spago legato parte dove era calibrato', async () => {
+    const hw = new Hardware({ display() {}, servo() {}, led() {}, issue() {}, tone() {}, log() {}, error() {} } as any);
+    hw.setCircuit([{ id: 's1', type: 'servo', x: 0, z: 0, rot: 0 }, { id: 'k', type: 'milkString', x: 0, z: 0, rot: 0, attachedTo: 's1', rest: 180 }], []);
+    expect(hw.servoAngle.get('s1')).toBe(180);
   });
 });

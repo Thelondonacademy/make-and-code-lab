@@ -214,6 +214,7 @@ export class Scene3D {
     }
     // prima i pezzi sul banco, poi quelli attaccati (così il servo è già al suo posto)
     for (const p of sorted) this.placeObj(this.objs.get(p.id)!);
+    for (const o of this.objs.values()) if (o.inst.type === 'milkCarton') this.updateMilk(o);
     this.wires = wires;
     for (const id of [...this.selected]) if (!ids.has(id)) this.selected.delete(id);
     if (this.selWire && !wires.some(w => w.id === this.selWire)) this.selWire = null;
@@ -241,6 +242,7 @@ export class Scene3D {
     const horn = hostObj?.inst.type === 'servo' ? hostObj.built.horn : null;
     const inBody = !!bp && hostObj?.inst.type === 'petBody';
     if (p.type === 'servo') this.relead(o, bp && hostObj?.inst.type === 'petBody' ? 'petBody' : null);
+    if (p.type === 'milkString') { g.getObjectByName('coil')!.visible = !horn; g.getObjectByName('knot')!.visible = !!horn; }
     o.built.setMounted?.(inBody);
     if (bp && hostObj) {
       if (g.parent !== hostObj.built.group) hostObj.built.group.add(g);
@@ -250,7 +252,7 @@ export class Scene3D {
       if (g.parent !== horn) horn.add(g);
       const pose = attachPose(p.type);
       g.position.set(...pose.pos);
-      g.rotation.set(pose.rotX || 0, 0, pose.rotZ);
+      g.rotation.set(pose.rotX || 0, pose.rotY || 0, pose.rotZ);
       if (inner) { inner.rotation.set(0, 0, 0); inner.position.set(0, 0, 0); }
     } else {
       if (g.parent !== this.scene) this.scene.add(g);
@@ -293,14 +295,14 @@ export class Scene3D {
   }
 
   /** Catapulta: dov'è la pallina nel cucchiaio (in coordinate del banco). */
-  ballWorld(armId: string) {
-    const b = this.objs.get(armId)?.built.group.getObjectByName('ball');
+  ballWorld(baseId: string) {
+    const b = this.objs.get(baseId)?.built.group.getObjectByName('ball');
     return b ? b.getWorldPosition(new THREE.Vector3()) : null;
   }
-  setBall(armId: string, on: boolean) {
-    const b = this.objs.get(armId)?.built.group.getObjectByName('ball');
-    if (b) b.visible = on;
-  }
+  /** Catapulta: angolo del braccio (0 = carico, 100 = scattato) e pallina nel cucchiaio. */
+  setCatapult(baseId: string, deg: number, ball: boolean) { this.objs.get(baseId)?.built.setCatapult?.(deg, ball); }
+  /** Il biscotto davanti all'occhio del mostro. */
+  setCookie(on: boolean) { for (const o of this.objs.values()) if (o.inst.type === 'milkCarton') { const c = o.built.group.getObjectByName('cookie'); if (c) c.visible = on; } }
   private flying: { m: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; t0: number; dur: number; h: number } | null = null;
   private landed: THREE.Mesh | null = null;
   /** La pallina vola dal cucchiaio fino a dove cade (parabola). */
@@ -323,26 +325,33 @@ export class Scene3D {
     if (o && !o.inst.attachedTo) this.bumps.set(id, performance.now());
   }
 
+  private angles = new Map<string, number>();
   setServo(id: string, angle: number) {
     const o = this.objs.get(id);
     const horn = o?.built.horn;
+    this.angles.set(id, angle);
     if (horn) horn.rotation.y = ((angle - 90) * Math.PI) / 180;
-    // mostro del latte: il servo sul tetto tira con un filo la bocca
     const host = o?.inst.attachedTo ? this.objs.get(o.inst.attachedTo) : null;
-    if (horn && host?.inst.type === 'milkCarton') {
-      const hg = host.built.group;
-      const jaw = hg.getObjectByName('jaw');
-      const string = hg.getObjectByName('string') as THREE.Line | undefined;
-      if (jaw) jaw.rotation.x = -jawOpen(angle);
-      if (jaw && string) {
-        hg.updateWorldMatrix(true, true);
-        const tip = horn.localToWorld(new THREE.Vector3(2.5, 0, 0));
-        const knot = jaw.getObjectByName('jaw-knot')!.getWorldPosition(new THREE.Vector3());
-        const inv = hg.matrixWorld.clone().invert();
-        (string.geometry as THREE.BufferGeometry).setFromPoints([tip.applyMatrix4(inv), knot.applyMatrix4(inv)]);
-        string.visible = true;
-      }
-    }
+    if (host?.inst.type === 'milkCarton') this.updateMilk(host);
+  }
+
+  /** Mostro del latte: se lo spago è legato al servo sul tetto, il servo tira su la bocca. */
+  private updateMilk(carton: PartObj) {
+    const hg = carton.built.group;
+    const jaw = hg.getObjectByName('jaw');
+    const string = hg.getObjectByName('string') as THREE.Line | undefined;
+    if (!jaw || !string) return;
+    const sv = [...this.objs.values()].find(x => x.inst.type === 'servo' && x.inst.attachedTo === carton.inst.id);
+    const st = sv && [...this.objs.values()].find(x => x.inst.type === 'milkString' && x.inst.attachedTo === sv.inst.id);
+    if (!sv?.built.horn || !st) { jaw.rotation.x = 0; string.visible = false; return; }
+    const angle = this.angles.get(sv.inst.id) ?? 90;
+    jaw.rotation.x = -jawOpen(angle, st.inst.rest ?? 90);
+    hg.updateWorldMatrix(true, true);
+    const tip = sv.built.horn.localToWorld(new THREE.Vector3(2.5, 0, 0));
+    const knot = jaw.getObjectByName('jaw-knot')!.getWorldPosition(new THREE.Vector3());
+    const inv = hg.matrixWorld.clone().invert();
+    (string.geometry as THREE.BufferGeometry).setFromPoints([tip.applyMatrix4(inv), knot.applyMatrix4(inv)]);
+    string.visible = true;
   }
 
   setDisplay(id: string, leds: Uint8Array) {
@@ -836,7 +845,11 @@ export class Scene3D {
     for (const b of this.objs.values()) {
       if (!hosts.includes(b.inst.type as any) || b.inst.attachedTo) continue;
       const c = this.ownBox(b.built.group).getCenter(new THREE.Vector3());
-      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (b.inst.type === 'petBody' ? 7.5 : b.inst.type === 'testPad' ? 4.5 : 9) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
+      // un pezzo alto (il cartone del latte): conta anche il punto del banco "dietro" il suo centro, visto dalla telecamera
+      const cam = this.camera.position, dir = c.clone().sub(cam);
+      const proj = dir.y < -1e-3 ? cam.clone().add(dir.multiplyScalar(-cam.y / dir.y)) : c;
+      const d = Math.min(Math.hypot(c.x - pos.x, c.z - pos.z), Math.hypot(proj.x - pos.x, proj.z - pos.z));
+      if (d < (b.inst.type === 'petBody' ? 7.5 : b.inst.type === 'testPad' ? 4.5 : 9) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
     }
     return null;
   }
@@ -896,10 +909,13 @@ export class Scene3D {
     const vFov = (this.camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
     const needW = (Math.max(size.x, 14) / 2) / Math.tan(hFov / 2);
-    const needD = (Math.max(size.z, 10) / 2 + size.y * 0.4) / Math.tan(vFov / 2);
+    // i pezzi alti (il mostro del latte con il servo sul tappo) vanno guardati un po' più da lontano e più in alto
+    const tall = size.y > 18;
+    const needD = (Math.max(size.z, 10) / 2 + size.y * (tall ? 0.75 : 0.4)) / Math.tan(vFov / 2);
     const dist = clamp(Math.max(needW, needD) * 1.05, this.controls.minDistance, this.controls.maxDistance);
-    this.controls.target.set(c.x, 0, c.z);
-    this.camera.position.set(c.x, dist * 0.76, c.z + dist * 0.65);
+    const ty = tall ? size.y * 0.3 : 0;
+    this.controls.target.set(c.x, ty, c.z);
+    this.camera.position.set(c.x, ty + dist * 0.76, c.z + dist * 0.65);
   }
   zoom(f: number) {
     const dir = this.camera.position.clone().sub(this.controls.target);

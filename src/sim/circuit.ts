@@ -11,6 +11,7 @@ export interface PartInst {
   rot: number;           // giri da 45° attorno all'asse verticale
   tilt?: number;         // 1 = sdraiato su un fianco
   attachedTo?: string;   // id del servo a cui è attaccato (materiali)
+  rest?: number;         // angolo del servo quando l'hai attaccato (spago, fermo): serve a calibrare
 }
 
 export interface Wire {
