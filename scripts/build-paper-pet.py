@@ -1,25 +1,18 @@
-"""Genera le sagome da stampare di Luna che scodinzola (A4, misure in mm) e il PDF.
+"""Genera le sagome da stampare di Luna che scodinzola (A4, misure vere in mm) e il PDF.
+Prima: python3 scripts/process-luna-art.py (prepara i disegni in art/luna).
 Uso: python3 scripts/build-paper-pet.py  → public/paper-pet/luna-sagome.pdf
 Progetto originale di The London Academy, ispirato all'idea del "Paper Pet".
 """
-import math, re, subprocess, os
+import base64, io, math, re, subprocess, os
+import cv2
+import numpy as np
+from PIL import Image
 from pypdf import PdfWriter, PdfReader
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'paper-pet')
+ART = os.path.join(os.path.dirname(__file__), '..', 'art', 'luna')
 CUT, FOLD, GLUE = '#1D1C1F', '#B83A00', '#EBBC4A'
 FONT = "font-family='Lexend, Arial, sans-serif'"
-
-
-def inner(svgfile):
-    s = open(os.path.join(OUT, svgfile)).read()
-    vb = re.search(r'viewBox="([^"]+)"', s).group(1)
-    body = re.sub(r'^.*?<svg[^>]*>', '', s, flags=re.S).replace('</svg>', '')
-    return vb, body
-
-
-def place(svgfile, x, y, w, h):
-    vb, body = inner(svgfile)
-    return f"<svg x='{x}' y='{y}' width='{w}' height='{h}' viewBox='{vb}'>{body}</svg>"
 
 
 def poly(pts, stroke=CUT, fill='none', dash=None, sw=0.4):
@@ -100,37 +93,84 @@ def page1():
     s.append(text(105, yS1 + 6, 'DIETRO', 3.4, weight=800) + text(122, yB1 - 3, 'uscita cavi', 2.6, anchor='start'))
     s.append(text(105, (yB1 + yP1) / 2, 'PANCIA', 4, weight=800))
     # legenda
-    ly = 287
+    ly = 282
     s.append(f"<line x1='14' y1='{ly}' x2='26' y2='{ly}' stroke='{CUT}' stroke-width='0.5'/>" + text(28, ly + 1.2, 'taglia', 3.2, 'start'))
     s.append(line(52, ly, 64, ly) + text(66, ly + 1.2, 'piega', 3.2, 'start'))
     s.append(f"<rect x='88' y='{ly - 2.5}' width='12' height='5' fill='{GLUE}55' stroke='{CUT}' stroke-width='0.3'/>" + text(102, ly + 1.2, 'colla', 3.2, 'start'))
     s.append(text(196, ly + 1.2, 'Stampa al 100%, senza adattare alla pagina', 2.8, 'end', '#69727D', 500))
-    s.append(text(105, 294, 'The London Academy · Make &amp; Code Lab', 2.4, color='#69727D', weight=500))
+    s.append(text(105, 288, 'The London Academy · Make &amp; Code Lab', 2.4, color='#69727D', weight=500))
     return s
 
 
+PXMM = 10  # risoluzione per calcolare la riga di taglio
+
+
+def sticker(name, x, y, w, tab=0, label=None):
+    """Disegno di Luna largo w mm in (x, y), con la riga di taglio a 1,5 mm dal bordo.
+    tab > 0: linguetta (colla) di tab mm sotto la base piatta, con la riga di piega."""
+    im = Image.open(os.path.join(ART, name)).convert('RGBA')
+    h = w * im.height / im.width
+    # immagine a 300 dpi
+    wp = round(w / 25.4 * 300)
+    pr = im.resize((wp, round(wp * im.height / im.width)), Image.LANCZOS)
+    buf = io.BytesIO(); pr.save(buf, 'PNG', optimize=True)
+    href = 'data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode()
+    # maschera in mm*PXMM, con spazio attorno
+    M = 4 * PXMM
+    mw, mh = round(w * PXMM), round(h * PXMM)
+    a = np.array(im.resize((mw, mh), Image.LANCZOS))[:, :, 3] > 40
+    canvas = np.zeros((mh + 2 * M + round(tab * PXMM), mw + 2 * M), np.uint8)
+    canvas[M:M + mh, M:M + mw] = a * 255
+    out = ''
+    if tab:
+        rows = np.where(a.any(axis=1))[0]
+        base = rows.max()
+        cols = np.where(a[base - 3:base + 1].any(axis=0))[0]
+        c0, c1 = cols.min(), cols.max()
+        y0 = M + base
+        canvas[y0:y0 + round(tab * PXMM), M + c0:M + c1 + 1] = 255
+        fx0, fx1, fy = x + c0 / PXMM, x + (c1 + 1) / PXMM, y + base / PXMM
+        out += f"<rect x='{fx0:.2f}' y='{fy:.2f}' width='{fx1 - fx0:.2f}' height='{tab}' fill='{GLUE}55'/>"
+        out += line(fx0 - 1.5, fy, fx1 + 1.5, fy)
+        if label:
+            out += text((fx0 + fx1) / 2, fy + tab / 2 + 1, label, 2.4)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))  # 1,5 mm
+    grown = cv2.dilate(canvas, k)
+    cs, _ = cv2.findContours(grown, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    c = max(cs, key=cv2.contourArea)
+    c = cv2.approxPolyDP(c, 1.5, True)
+    d = 'M' + ' L'.join(f'{x + (px - M) / PXMM:.2f},{y + (py - M) / PXMM:.2f}' for px, py in c[:, 0]) + ' Z'
+    img_tag = f"<image x='{x}' y='{y}' width='{w}' height='{h:.2f}' href='{href}' xlink:href='{href}' preserveAspectRatio='none'/>"
+    return f"<path d='{d}' fill='#FFFFFF' stroke='{CUT}' stroke-width='0.4'/>" + img_tag + out, h
+
+
+FACE_W, TAIL_W, PAW_W, TAIL_TAB, PAW_TAB = 52, 31, 22, 16, 8
+
+
 def page2():
-    s = [text(105, 12, 'LUNA CHE SCODINZOLA · faccia, coda e zampe', 4.6, weight=800)]
-    # faccia a colori e da colorare (60 × 60 mm)
-    s.append(text(52, 24, 'Faccia a colori', 3.4, weight=700) + text(158, 24, 'Faccia da colorare', 3.4, weight=700))
-    s.append(f"<rect x='22' y='28' width='60' height='60' rx='4' fill='none' stroke='{CUT}' stroke-width='0.4'/>" + place('luna-face.svg', 23, 29, 58, 58))
-    s.append(f"<rect x='128' y='28' width='60' height='60' rx='4' fill='none' stroke='{CUT}' stroke-width='0.4'/>" + place('luna-face-line.svg', 129, 29, 58, 58))
-    # coda con tasca per il braccio del servo
-    for i, (cx, file) in enumerate(((52, 'luna-tail.svg'), (158, 'luna-tail-line.svg'))):
-        s.append(text(cx, 100, 'Coda' + (' da colorare' if i else ' a colori'), 3.4, weight=700))
-        s.append(f"<rect x='{cx - 17}' y='104' width='34' height='70' rx='3' fill='none' stroke='{CUT}' stroke-width='0.4'/>" + place(file, cx - 16, 105, 32, 56))
-        s.append(line(cx - 17, 162, cx + 17, 162) + f"<rect x='{cx - 17}' y='162' width='34' height='12' fill='{GLUE}55' stroke='none'/>")
-        s.append(text(cx, 169.5, 'piega: tasca per il braccio', 2.6))
-    # zampe (4) 26 × 20 mm con linguetta
-    s.append(text(105, 186, 'Zampe (4)', 3.4, weight=700))
-    for k in range(4):
-        x = 30 + k * 40
-        s.append(f"<rect x='{x}' y='192' width='28' height='30' rx='3' fill='none' stroke='{CUT}' stroke-width='0.4'/>" + place('luna-paw.svg', x + 1, 193, 26, 20))
-        s.append(line(x, 214, x + 28, 214) + f"<rect x='{x}' y='214' width='28' height='8' fill='{GLUE}55' stroke='none'/>")
-    s.append(text(105, 228, 'Piega la linguetta e incollala sotto la pancia: due zampe davanti, due dietro.', 2.8, color='#5E5A60', weight=500))
-    # istruzioni brevi
+    s = [text(105, 15, 'LUNA CHE SCODINZOLA · faccia, coda e zampe', 4.6, weight=800)]
+    s.append(text(105, 21, 'Scegli: a colori oppure da colorare. Ritaglia sulla riga continua.', 3, color='#5E5A60', weight=500))
+    # faccia: 52 mm, sta sul davanti largo 46 mm (le orecchie escono un po')
+    s.append(text(53, 30, 'Faccia a colori', 3.4, weight=700) + text(157, 30, 'Faccia da colorare', 3.4, weight=700))
+    for cx, f in ((53, 'faccia-trim.png'), (157, 'faccia-linea.png')):
+        svg, fh = sticker(f, cx - FACE_W / 2, 35, FACE_W)
+        s.append(svg)
+    # coda con la linguetta-tasca per il braccio del servo
+    y = 92
+    s.append(text(53, y - 4, 'Coda a colori', 3.4, weight=700) + text(157, y - 4, 'Coda da colorare', 3.4, weight=700))
+    for cx, f in ((53, 'coda-trim.png'), (157, 'coda-linea.png')):
+        svg, th = sticker(f, cx - TAIL_W / 2, y, TAIL_W, TAIL_TAB, 'tasca')
+        s.append(svg)
+    s.append(text(105, y + 30, 'Piega la tasca dietro.', 2.8, color='#5E5A60', weight=500) + text(105, y + 34, 'Colla solo sul fondo:', 2.8, color='#5E5A60', weight=500) + text(105, y + 38, 'il braccio del servo', 2.8, color='#5E5A60', weight=500) + text(105, y + 42, 'entra dentro.', 2.8, color='#5E5A60', weight=500))
+    # zampe: 4 a colori e 4 da colorare, linguetta sotto la pancia
+    for row, (f, lab) in enumerate((('zampa-trim.png', 'Zampe a colori (4)'), ('zampa-linea.png', 'Zampe da colorare (4)'))):
+        yy = 168 + row * 36
+        s.append(text(20, yy - 3, lab, 3.2, 'start', weight=700))
+        for k in range(4):
+            svg, ph = sticker(f, 24 + k * 44, yy, PAW_W, PAW_TAB)
+            s.append(svg)
     steps = [
-        '1. Ritaglia tutti i pezzi. Un adulto ritaglia la finestra del servo e l\'uscita dei cavi.',
+        '1. Ritaglia i pezzi. Un adulto ritaglia la finestra del servo e l\'uscita dei cavi.',
         '2. Piega lungo le righe tratteggiate e incolla il corpo con le linguette gialle.',
         '3. Infila il servo da dentro nella finestra: si ferma con le alette. Il cavo esce dietro.',
         '4. Collega: arancione → pin 0, rosso → 3V, marrone → GND. Carica il codice e premi A.',
@@ -139,27 +179,16 @@ def page2():
         '7. Accarezza la schiena di Luna: la coda scodinzola!',
     ]
     for i, t in enumerate(steps):
-        s.append(text(18, 240 + i * 6.2, t, 3.2, 'start', weight=500))
-    s.append(text(105, 290, 'Progetto originale The London Academy · ispirato all\'idea "Paper Pet" · Make &amp; Code Lab', 2.6, color='#69727D', weight=500))
+        s.append(text(18, 244 + i * 5.6, t, 3.1, 'start', weight=500))
+    s.append(text(105, 287, 'Stampa su A4 al 100% (dimensioni reali), meglio su cartoncino · The London Academy · ispirato all\'idea "Paper Pet"', 2.4, color='#69727D', weight=500))
     return s
 
 
-def lineart(src, dst):
-    """Versione da colorare: stesse forme, solo contorni."""
-    s = open(os.path.join(OUT, src)).read()
-    s = re.sub(r'fill="(#[0-9A-Fa-f]{6})"', lambda m: 'fill="#FFFFFF" stroke="#2B292E" stroke-width="2.4"' if m.group(1).upper() not in ('#2B1D16', '#FFFFFF') else f'fill="{m.group(1)}"', s)
-    s = s.replace('opacity="0.6"', 'opacity="0"')
-    s = re.sub(r'stroke="#(?!2B292E)[0-9A-Fa-f]{6}"', 'stroke="#2B292E"', s)
-    open(os.path.join(OUT, dst), 'w').write(s)
-
-
 def svg_page(items):
-    return f"<svg xmlns='http://www.w3.org/2000/svg' width='210mm' height='297mm' viewBox='0 0 210 297'><rect width='210' height='297' fill='#FFFFFF'/>{''.join(items)}</svg>"
+    return f"<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='210mm' height='297mm' viewBox='0 0 210 297'><rect width='210' height='297' fill='#FFFFFF'/>{''.join(items)}</svg>"
 
 
 if __name__ == '__main__':
-    lineart('luna-face.svg', 'luna-face-line.svg')
-    lineart('luna-tail.svg', 'luna-tail-line.svg')
     pdfs = []
     for i, items in enumerate((page1(), page2()), 1):
         p = os.path.join('/tmp', f'luna-p{i}.svg')

@@ -967,11 +967,11 @@ export class Workspace {
   private attachMsg(p: PartInst): string {
     const host = this.parts.find(h => h.id === p.attachedTo)?.type;
     if (host === 'petBody') {
-      if (p.type === 'servo') return `${img('luna.svg', 24)}Il servo è nella pancia di Luna! Il braccio bianco esce dalla schiena.`;
-      if (p.type === 'foilPatch') return `${img('luna.svg', 24)}Stagnola sulla schiena! Nel mondo vero la incolli con la colla stick.`;
+      if (p.type === 'servo') return `${img('luna.png', 24)}Il servo è nella pancia di Luna! Il braccio bianco esce dalla schiena.`;
+      if (p.type === 'foilPatch') return `${img('luna.png', 24)}Stagnola sulla schiena! Nel mondo vero la incolli con la colla stick.`;
       return `${img('glue-stick.svg', 24)}Attaccato a Luna! Nel mondo vero lo incolli con la colla stick.`;
     }
-    if (p.type === 'petTail') return `${img('luna-tail.svg', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
+    if (p.type === 'petTail') return `${img('luna-tail.png', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
     return `${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`;
   }
 
@@ -997,7 +997,7 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.svg', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;

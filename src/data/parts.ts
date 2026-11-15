@@ -220,7 +220,7 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   petBody: {
-    type: 'petBody', name: 'Corpo di Luna', category: 'materiali', icon: 'luna.svg', material: true,
+    type: 'petBody', name: 'Corpo di Luna', category: 'materiali', icon: 'luna.png', material: true,
     size: [7, 7.5, 13.5], terminals: [],
     card: {
       cosa: 'Il corpo di carta di Luna. Dentro ci va il servo che muove la coda.',
@@ -230,8 +230,8 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   petLegs: {
-    type: 'petLegs', name: 'Zampe di Luna', category: 'materiali', icon: 'luna-paw.svg', material: true, mountOn: 'petBody',
-    size: [5.6, 0.3, 4.6], terminals: [],
+    type: 'petLegs', name: 'Zampe di Luna', category: 'materiali', icon: 'luna-paw.png', material: true, mountOn: 'petBody',
+    size: [7.6, 0.3, 6.4], terminals: [],
     card: {
       cosa: 'Quattro zampe di carta. Si incollano sotto la pancia.',
       come: ['Due zampe davanti e due dietro.', 'Trascinale sul corpo di Luna: si attaccano da sole.'],
@@ -240,8 +240,8 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   petFace: {
-    type: 'petFace', name: 'Faccia di Luna', category: 'materiali', icon: 'luna.svg', material: true, mountOn: 'petBody',
-    size: [4, 4, 0.3], terminals: [],
+    type: 'petFace', name: 'Faccia di Luna', category: 'materiali', icon: 'luna.png', material: true, mountOn: 'petBody',
+    size: [7.8, 6.5, 0.3], terminals: [],
     card: {
       cosa: 'La faccia di Luna. Puoi usare quella a colori o colorarla tu.',
       come: ['Si incolla sul davanti del corpo.', 'Trascinala sul corpo di Luna: si attacca da sola.'],
@@ -250,8 +250,8 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   petTail: {
-    type: 'petTail', name: 'Coda di Luna', category: 'materiali', icon: 'luna-tail.svg', material: true, mountOn: 'horn',
-    size: [3, 0.3, 5], terminals: [],
+    type: 'petTail', name: 'Coda di Luna', category: 'materiali', icon: 'luna-tail.png', material: true, mountOn: 'horn',
+    size: [4.7, 0.3, 7.5], terminals: [],
     card: {
       cosa: 'La coda di carta. Ha una tasca che si infila sul braccio del servo.',
       come: ['Quando il servo gira, la coda scodinzola!', 'Trascinala sul braccio bianco del servo.'],

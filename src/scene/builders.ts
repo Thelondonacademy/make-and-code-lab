@@ -370,8 +370,9 @@ export function petLeadEnds() {
 
 function petFace(): Built {
   const g = new THREE.Group();
-  const face = mesh(new THREE.PlaneGeometry(4.6, 4.6), paperMat('luna-face.svg'));
-  face.position.y = 2.3;
+  // misure vere × 0,15: faccia 52 mm, come nella sagoma
+  const face = mesh(new THREE.PlaneGeometry(7.8, 7.8 * 1035 / 1254), paperMat('luna-face.png'));
+  face.position.y = 3.0;
   face.castShadow = false;
   g.add(face);
   return { group: g };
@@ -379,30 +380,33 @@ function petFace(): Built {
 
 function petTail(): Built {
   const g = new THREE.Group();
-  const tail = mesh(new THREE.PlaneGeometry(3.6, 6), paperMat('luna-tail.svg'));
+  const th = 4.65 * 1420 / 894; // coda 31 mm, come nella sagoma
+  const tail = mesh(new THREE.PlaneGeometry(4.65, th), paperMat('luna-tail.png'));
   tail.name = 'tail-plane';
-  tail.position.set(0, 3, 0);
+  tail.position.set(0, th / 2 - 0.3, 0);
   g.add(tail);
   return { group: g };
 }
 
 function petLegs(): Built {
   const g = new THREE.Group();
-  const m = paperMat('luna-paw.svg');
-  const sheet = mesh(new THREE.PlaneGeometry(5.6, 4.6), mat(0xfbf8f1, { side: THREE.DoubleSide }), 0, 0.02, 0);
+  const m = paperMat('luna-paw.png');
+  const PW = 3.3, PH = 3.3 * 1082 / 1296; // zampa 22 mm, come nella sagoma
+  const sheet = mesh(new THREE.PlaneGeometry(7.6, 6.4), mat(0xfbf8f1, { side: THREE.DoubleSide }), 0, 0.02, 0);
   sheet.rotation.x = -Math.PI / 2;
   sheet.castShadow = false;
   sheet.receiveShadow = true;
   g.add(sheet);
   const paws: THREE.Mesh[] = [];
   for (let i = 0; i < 4; i++) {
-    const p = mesh(new THREE.PlaneGeometry(2.2, 1.76), m, 0, 0.05, 0);
+    const p = mesh(new THREE.PlaneGeometry(PW, PH), m, 0, 0.05, 0);
     p.castShadow = false;
     paws.push(p);
     g.add(p);
   }
-  const bench = [[-1.3, -1.05, 0], [1.3, -1.05, 0], [-1.3, 1.05, 0], [1.3, 1.05, 0]];
-  const body = [[-1.9, PET.L / 2 + 0.45, 0], [1.9, PET.L / 2 + 0.45, 0], [-1.9, -PET.L / 2 - 0.45, Math.PI], [1.9, -PET.L / 2 - 0.45, Math.PI]];
+  const bench = [[-1.8, -1.5, 0], [1.8, -1.5, 0], [-1.8, 1.5, 0], [1.8, 1.5, 0]];
+  const out = PET.L / 2 + PH / 2 - 0.3; // la linguetta è sotto la pancia, la zampa spunta fuori
+  const body = [[-1.75, out, 0], [1.75, out, 0], [-1.75, -out, Math.PI], [1.75, -out, Math.PI]];
   const setMounted = (on: boolean) => {
     sheet.visible = !on;
     (on ? body : bench).forEach(([x, z, r], i) => { paws[i].position.set(x, 0.05, z); paws[i].rotation.set(-Math.PI / 2, 0, r); });
