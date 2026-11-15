@@ -100,72 +100,6 @@ export const LEVELS: Level[] = [
     },
   },
   {
-    id: 'cagnolino',
-    lesson: 4,
-    title: 'Il cagnolino che scodinzola',
-    icon: 'gi:sitting-dog',
-    intro: 'Costruiamo un cagnolino di cartone. Quando premi A, muove la coda!',
-    palette: ['microbit', 'battery', 'servo', 'cardboardBox', 'paperCup', 'straw', 'cardboardPanel', 'scissors', 'hotGlue'],
-    start: {
-      parts: [
-        { id: 'mb1', type: 'microbit', x: -9, z: 4, rot: 0 },
-        { id: 'bat1', type: 'battery', x: -9, z: -5, rot: 0 },
-      ],
-      wires: [{ id: 'w-pow', a: 'bat1:PLUG', b: 'mb1:BAT', color: 'bianco' }],
-    },
-    code: `servos.P0.setAngle(90)
-basic.showIcon(IconNames.Happy)
-input.onButtonPressed(Button.A, function () {
-    for (let index = 0; index < 4; index++) {
-        servos.P0.setAngle(45)
-        basic.pause(300)
-        servos.P0.setAngle(135)
-        basic.pause(300)
-    }
-    servos.P0.setAngle(90)
-})
-`,
-    namespaces: ['basic', 'input', 'music', 'loops', 'servos'],
-    dependencies: { core: '*', servo: '*' },
-    steps: [
-      { title: 'Prendi il servo', mode: 'build', text: 'Trascina il servo sul banco. È il motore che muove la coda.', goal: c => has(c, 'servo') },
-      {
-        title: 'Fai la coda', mode: 'build', text: 'Trascina la cannuccia sopra il braccio bianco del servo. Si attacca da sola.',
-        goal: c => c.parts.some(p => p.type === 'straw' && !!p.attachedTo),
-        why: { q: 'Nel mondo vero come si attacca?', a: 'Con la colla a caldo. Brucia: la usa solo l\'adulto. Tu gli dici dove metterla.' },
-      },
-      { title: 'Fai il corpo e la testa', mode: 'build', text: 'Aggiungi la scatola per il corpo e il bicchiere per la testa.', goal: c => has(c, 'cardboardBox') && has(c, 'paperCup') },
-      {
-        title: 'Collega il servo', mode: 'wire', text: 'Il servo ha 3 fili. Tocca la fine di un filo, poi il suo posto sul micro:bit.',
-        goal: servoOk,
-        checklist: c => {
-          const s = c.parts.find(p => p.type === 'servo');
-          const mb = c.parts.find(p => p.type === 'microbit');
-          const ok = (t: string, target: string) => !!s && !!mb && c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${target}`);
-          return [
-            { label: 'Marrone → GND', color: '#7A4A22', done: ok('GND', 'GND') },
-            { label: 'Rosso → 3V', color: '#E5484D', done: ok('VCC', '3V') },
-            { label: 'Arancione → pin 0', color: '#F7941D', done: ok('SIG', 'P0') },
-          ];
-        },
-        why: { q: 'Perché 3 fili?', a: 'Rosso e marrone portano l\'energia. L\'arancione porta il messaggio: "gira!"' },
-      },
-      {
-        title: 'Fallo scodinzolare', mode: 'code', text: 'Premi Prova! Poi tocca il pulsante A del micro:bit.',
-        goal: c => c.running && c.servoMoves >= 2,
-        why: { q: 'Cosa vogliono dire 45 e 135?', a: 'Sono le posizioni del braccio. 90 è dritto. 45 è da una parte, 135 dall\'altra.' },
-      },
-      {
-        title: 'Cambialo tu!', mode: 'code', text: 'Fai scodinzolare la coda più veloce: metti un numero più piccolo nelle pause. Poi premi Prova! e A.',
-        goal: c => c.runInStep && pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 && c.servoMoves >= 2,
-      },
-    ],
-    real: {
-      materials: ['un micro:bit V2 e 2 pile AAA', 'un servo SG90', '3 cavi a coccodrillo', 'una scatola di cartone, un bicchiere di carta e una cannuccia', 'colla a caldo (la usa l\'adulto)'],
-      safety: [['soloAdulto', 'La colla a caldo la usa solo l\'adulto.'], ['adulto', 'Il taglio del cartone si fa con un adulto.'], ['solo', 'Attacca i coccodrilli ai fili del servo.']],
-    },
-  },
-  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -284,7 +218,7 @@ export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi' }, { icon: 'gi:moon', title: 'La luce notturna' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
-  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:sitting-dog', title: 'Il cagnolino che scodinzola', level: 'cagnolino' }, { icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
+  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },
   { n: 6, title: 'Il robot intelligente', projects: [{ icon: 'gi:radar-sweep', title: 'Il robot che evita i muri' }, { icon: 'gi:podium-winner', title: 'La grande Expo' }] },
 ];
