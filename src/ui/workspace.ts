@@ -785,12 +785,8 @@ export class Workspace {
     this.persist();
     this.evaluate();
     clearInterval(this.evalTimer);
-    this.evalTimer = window.setInterval(() => {
-      if (this.running) { this.evaluate(); if (this.level.steps[this.step]?.checklist) this.renderGuideChecklistOnly(); }
-    }, 300);
+    this.evalTimer = window.setInterval(() => { if (this.running) this.evaluate(); }, 300);
   }
-
-  private renderGuideChecklistOnly() { /* la checklist cambia solo con i fili: niente da fare durante la prova */ }
 
   private persist() {
     saveWork(this.level.id, { parts: this.parts, wires: this.wires, mk: this.mkProject || { text: { 'main.ts': this.code } }, step: this.step });

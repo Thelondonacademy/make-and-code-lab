@@ -72,7 +72,11 @@ export class CodeEditor {
     this.spec = spec;
     const id = saved?.header?.id || localStorage.getItem('mcl-mkid-' + spec.key) || uuid();
     try { localStorage.setItem('mcl-mkid-' + spec.key, id); } catch { /* memoria piena o bloccata */ }
-    this.project = saved?.text ? { header: { ...(makeProject(spec, id).header as any), ...(saved.header || {}), id }, text: saved.text } : makeProject(spec, id);
+    const base = makeProject(spec, id);
+    // un salvataggio parziale (solo main.ts) si completa con i file del livello; senza main.blocks MakeCode ricrea i blocchi dal codice
+    this.project = saved?.text
+      ? { header: { ...(base.header as any), ...(saved.header || {}), id }, text: { ...base.text, ...(saved.header ? {} : { 'main.blocks': '' }), ...saved.text } }
+      : base;
     if (!this.iframe) { this.create(); return; }
     if (this.status !== 'ready') return; // verrà caricato al primo avvio
     await this.driver!.importProject({ project: this.project, filters: filtersFor(spec.namespaces) });
