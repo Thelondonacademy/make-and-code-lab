@@ -468,7 +468,7 @@ input.onPinPressed(TouchPin.P2, function () {
         why: { q: 'Perché i suoni sono diversi?', a: 'Ogni frutto suona una nota diversa: Do, Mi, Sol. Il numero dice quanto vibra il suono: più è grande, più la nota è alta.' },
       },
       {
-        title: 'Cambialo tu!', mode: 'code', text: 'Cambia una nota: per esempio metti 523 (il Do alto) al posto di 262. Poi premi Prova! e suona.',
+        title: 'Cambialo tu!', mode: 'code', text: 'Cambia una nota: in un blocco "suona tono" scegli un\'altra nota, per esempio DO Alto. Poi premi Prova! e suona.',
         goal: c => c.runInStep && !['262', '330', '392'].every(n => c.code.includes(`playTone(${n}`)) && !!c.stats && c.stats.tones > 0,
       },
     ],
