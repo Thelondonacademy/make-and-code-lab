@@ -414,3 +414,20 @@ describe('Non toccare il filo', () => {
     expect(f.errors).toEqual([]);
   });
 });
+
+describe('Il piano di frutta', () => {
+  it('ogni frutto (pin) suona la sua nota', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const notes: number[] = [];
+    const f = fakeBridge();
+    f.b.tone = (fr: number) => { notes.push(Math.round(fr)); };
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('frutta')!.code);
+    await wait(30);
+    for (const p of ['P0', 'P1', 'P2']) { rt.touchPin(p, true); await wait(20); rt.touchPin(p, false); await wait(950); }
+    expect(notes).toEqual([262, 330, 392]);
+    expect(rt.stats.iconsShown.has('EighthNote')).toBe(true);
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  }, 10000);
+});

@@ -626,6 +626,24 @@ function buzzWire(): Built {
   return { group: g };
 }
 
+// ---------- Il piano di frutta ----------
+function fruitBall(color: number, rx: number, ry: number, rz: number, stem = true): Built {
+  const g = new THREE.Group();
+  const b = mesh(new THREE.SphereGeometry(1, 24, 18), mat(color, { roughness: 0.55 }), 0, ry, 0);
+  b.scale.set(rx, ry, rz);
+  g.add(b);
+  if (stem) {
+    g.add(mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.6, 6), mat(0x6b4a22), 0, ry * 2 + 0.15, 0));
+    const leaf = mesh(new THREE.SphereGeometry(0.35, 8, 6), mat(0x4f9a3c), 0.3, ry * 2 + 0.25, 0);
+    leaf.scale.set(1, 0.3, 0.55);
+    g.add(leaf);
+  }
+  return { group: g };
+}
+const apple = () => fruitBall(0xd93a32, 1.6, 1.55, 1.6);
+const orange = () => fruitBall(0xf28c1c, 1.65, 1.6, 1.65);
+const lemon = () => fruitBall(0xf5d63d, 2, 1.25, 1.25, false);
+
 /** Dove sta l'oggetto appoggiato sul piano di prova: sopra le due graffette. */
 export function padPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
   return { pos: new THREE.Vector3(0, 0.5, 0), quat: new THREE.Quaternion() };
@@ -636,7 +654,7 @@ export function hostPose(host: string, type: string) {
   return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : host === 'testPad' ? padPose() : null;
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap, buzzWire };
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap, buzzWire, apple, orange, lemon };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();

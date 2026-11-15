@@ -73,6 +73,11 @@ const buzzWired = (c: LevelCtx) => {
   const n = c.analysis.nets;
   return !!bw && c.parts.some(mb => mb.type === 'microbit' && ((n.same(`${mb.id}:P0`, `${bw.id}:L`) && n.same(`${mb.id}:GND`, `${bw.id}:W`)) || (n.same(`${mb.id}:P0`, `${bw.id}:W`) && n.same(`${mb.id}:GND`, `${bw.id}:L`))));
 };
+/** Un frutto è collegato a un punto del micro:bit. */
+const fruitOn = (c: LevelCtx, type: string, pin: string) => {
+  const f = c.parts.find(p => p.type === type);
+  return !!f && c.parts.some(mb => mb.type === 'microbit' && c.analysis.nets.same(`${f.id}:F`, `${mb.id}:${pin}`));
+};
 /** Sul piano c'è un oggetto che conduce. */
 const padConducts = (c: LevelCtx) => c.parts.some(o => c.parts.find(h => h.id === o.attachedTo)?.type === 'testPad' && ['coin', 'banana', 'foilBall'].includes(o.type));
 const onStrap = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === 'strap');
@@ -412,6 +417,67 @@ input.onGesture(Gesture.Shake, function () {
     },
   },
   {
+    id: 'frutta',
+    lesson: 2,
+    title: 'Il piano di frutta',
+    icon: 'gi:banana',
+    intro: 'Collega la frutta al micro:bit e suona! Ogni frutto è un tasto del piano.',
+    palette: ['microbit', 'battery', 'banana', 'apple', 'lemon', 'orange'],
+    start: { parts: [], wires: [] },
+    code: `input.onPinPressed(TouchPin.P0, function () {
+    music.playTone(262, music.beat(BeatFraction.Half))
+    basic.showIcon(IconNames.EighthNote)
+})
+input.onPinPressed(TouchPin.P1, function () {
+    music.playTone(330, music.beat(BeatFraction.Half))
+    basic.showIcon(IconNames.EighthNote)
+})
+input.onPinPressed(TouchPin.P2, function () {
+    music.playTone(392, music.beat(BeatFraction.Half))
+    basic.showIcon(IconNames.EighthNote)
+})
+`,
+    namespaces: ['basic', 'input', 'music'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
+      {
+        title: 'La frutta', mode: 'build', text: 'Metti sul banco la banana, la mela, il limone e l\'arancia.',
+        goal: c => ['banana', 'apple', 'lemon', 'orange'].every(t => has(c, t)),
+        checklist: c => [['banana', 'Banana'], ['apple', 'Mela'], ['lemon', 'Limone'], ['orange', 'Arancia']].map(([t, n]) => ({ label: n, done: has(c, t) })),
+      },
+      {
+        title: 'L\'arancia in mano', mode: 'wire', text: 'Un cavo dal GND all\'arancia. Mentre suoni, l\'arancia la tieni in mano.',
+        goal: c => fruitOn(c, 'orange', 'GND'),
+        why: { q: 'Perché tenere l\'arancia?', a: 'Con una mano tieni l\'arancia, con l\'altra tocchi un frutto. L\'elettricità passa dal frutto, nel tuo corpo, fino all\'arancia e al GND: il circuito si chiude!' },
+      },
+      {
+        title: 'I tasti del piano', mode: 'wire', text: 'Pin 0 alla banana, pin 1 alla mela, pin 2 al limone.',
+        goal: c => fruitOn(c, 'banana', 'P0') && fruitOn(c, 'apple', 'P1') && fruitOn(c, 'lemon', 'P2'),
+        checklist: c => [
+          { label: 'Pin 0 → banana', color: '#F5C400', done: fruitOn(c, 'banana', 'P0') },
+          { label: 'Pin 1 → mela', color: '#E5484D', done: fruitOn(c, 'apple', 'P1') },
+          { label: 'Pin 2 → limone', color: '#2E8B57', done: fruitOn(c, 'lemon', 'P2') },
+        ],
+      },
+      {
+        title: 'Suona!', mode: 'code', text: 'Premi Prova! Tieni l\'arancia e tocca la banana, la mela e il limone (o i loro pulsanti in alto).',
+        goal: c => c.running && !!c.stats && ['P0', 'P1', 'P2'].every(p => c.stats!.pins.has(p)) && c.stats.tones >= 3,
+        why: { q: 'Perché i suoni sono diversi?', a: 'Ogni frutto suona una nota diversa: Do, Mi, Sol. Il numero dice quanto vibra il suono: più è grande, più la nota è alta.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Cambia una nota: per esempio metti 523 (il Do alto) al posto di 262. Poi premi Prova! e suona.',
+        goal: c => c.runInStep && !['262', '330', '392'].every(n => c.code.includes(`playTone(${n}`)) && !!c.stats && c.stats.tones > 0,
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2 (ha l\'altoparlante) e un portapile con 2 pile AAA', '4 cavi a coccodrillo', 'frutta: una banana, una mela, un limone e un\'arancia', 'il cavo USB per caricare il codice'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli alla frutta. La corrente è piccolissima: non si sente.'], ['solo', 'Dopo, lava la frutta prima di mangiarla.']],
+    },
+  },
+  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -528,7 +594,7 @@ basic.forever(function () {
 
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
-  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!', level: 'filo' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
+  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!', level: 'filo' }, { icon: 'gi:banana', title: 'Il piano di frutta', level: 'frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },

@@ -600,7 +600,9 @@ export class Scene3D {
       if (h?.userData.logo) { this.pressed = { kind: 'logo', name: 'logo' }; this.cb.onLogo(true); this.controls.enabled = false; return; }
       if (h?.userData.pad && ['P0', 'P1', 'P2'].includes(h.userData.pad)) { this.pressed = { kind: 'pad', name: h.userData.pad }; this.cb.onPad(h.userData.pad, true); this.controls.enabled = false; return; }
       const fid = h?.userData.partId as string | undefined;
-      if (fid && this.objs.get(fid)?.inst.type === 'foilPatch') { this.pressed = { kind: 'foil', name: fid }; this.cb.onFoil(fid, true); this.controls.enabled = false; return; }
+      const ftype = fid ? this.objs.get(fid)?.inst.type : undefined;
+      const fruitKey = !!fid && ['banana', 'apple', 'lemon'].includes(ftype!) && this.wires.some(w => w.a === `${fid}:F` || w.b === `${fid}:F`);
+      if (fid && (ftype === 'foilPatch' || fruitKey)) { this.pressed = { kind: 'foil', name: fid }; this.cb.onFoil(fid, true); this.controls.enabled = false; return; }
       // gli oggetti da provare si spostano anche con la prova accesa (tester dei conduttori)
       if (fid && this.mode === 'build' && mountsOf(this.objs.get(fid)!.inst.type).includes('testPad')) {
         const p = this.onTable(e);

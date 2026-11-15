@@ -17,6 +17,7 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 - **Sasso, carta, forbice**: dal progetto di micro:bit.org/MakeCode. Scuoti: numero a caso 1-3 → quadratino (sasso), quadrato (carta), forbice. Nel simulatore un amico virtuale gioca contro e dice chi vince.
 - **Il tester dei conduttori** (lezione 2): dal progetto "Conductivity tester" di micro:bit.org. Pin 1 e GND vanno a due graffette su un cartoncino; se l'oggetto appoggiato conduce, compare il cuore. Si provano moneta, banana, gomma, tappo e stagnola, anche con la prova accesa.
 - **Non toccare il filo!** (lezione 2): il classico gioco del filo (GND al filo, pin 0 all'anello). Se si toccano: X e suono, altrimenti faccina felice. Nel simulatore c'è il minigioco: trascini l'anello lungo il filo con il dito o il mouse.
+- **Il piano di frutta** (lezione 2): dal progetto "Banana keyboard" di MakeCode. GND all'arancia (da tenere in mano), pin 0/1/2 a banana, mela e limone: ogni frutto suona una nota (Do, Mi, Sol). Il simulatore spiega che senza il frutto al GND in mano il circuito non si chiude.
 - **Luna che scodinzola**: un cagnolino di carta con il servo nella pancia e la stagnola sulla schiena. Accarezzi la stagnola (pin 1, tocco capacitivo del V2) e la coda scodinzola. Energia dal cavo USB o dalle pile. Le sagome da stampare sono in `public/paper-pet/luna-sagome.pdf` (disegni in `art/luna`; si rigenerano con `python3 scripts/process-luna-art.py` e poi `python3 scripts/build-paper-pet.py`).
 
 I progetti si salvano solo nel browser: niente account, niente dati inviati.

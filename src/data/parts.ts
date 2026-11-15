@@ -316,7 +316,7 @@ export const PARTS: Record<string, PartDef> = {
   },
   banana: {
     type: 'banana', name: 'Banana', category: 'materiali', icon: 'banana.svg', mountOn: 'testPad', conductive: true,
-    size: [8, 2, 3], terminals: [],
+    size: [8, 2, 3], terminals: [{ id: 'F', label: 'banana', kind: 'pad', pos: [4.3, 0.9, 0.8] }],
     card: { cosa: 'Una banana. Dentro è piena di acqua e sali.', come: ['Secondo te fa passare l\'elettricità? Provala!'], sicurezza: [['solo', 'Usarla per l\'esperimento (poi puoi mangiarla).']], mondo: 'una banana' },
   },
   eraser: {
@@ -343,6 +343,21 @@ export const PARTS: Record<string, PartDef> = {
       attenzione: 'Le punte del filo pungono: un adulto le piega o le copre con il nastro.',
       mondo: 'un filo di metallo spesso (va bene una gruccia o filo da giardino), plastilina, 2 cavi a coccodrillo',
     },
+  },
+  apple: {
+    type: 'apple', name: 'Mela', category: 'materiali', icon: 'red-apple.svg', conductive: true,
+    size: [3.4, 3.6, 3.4], terminals: [{ id: 'F', label: 'mela', kind: 'pad', pos: [1.75, 1.6, 0] }],
+    card: { cosa: 'Una mela. Dentro c\'è tanta acqua: fa passare un po\' di elettricità.', come: ['Attacchi un coccodrillo alla mela. Quando la tocchi, il micro:bit lo sente e suona.'], sicurezza: [['solo', 'Attaccare il coccodrillo alla frutta.']], mondo: 'una mela (poi la puoi mangiare)' },
+  },
+  lemon: {
+    type: 'lemon', name: 'Limone', category: 'materiali', icon: 'lemon.svg', conductive: true,
+    size: [4, 2.6, 2.6], terminals: [{ id: 'F', label: 'limone', kind: 'pad', pos: [2.2, 1.3, 0] }],
+    card: { cosa: 'Un limone. È pieno di succo: conduce bene!', come: ['Attacchi un coccodrillo al limone. Quando lo tocchi, il micro:bit suona.'], sicurezza: [['solo', 'Attaccare il coccodrillo alla frutta.']], mondo: 'un limone' },
+  },
+  orange: {
+    type: 'orange', name: 'Arancia (da tenere in mano)', category: 'materiali', icon: 'tangerine.svg', conductive: true,
+    size: [3.4, 3.4, 3.4], terminals: [{ id: 'F', label: 'arancia', kind: 'pad', pos: [1.75, 1.6, 0] }],
+    card: { cosa: 'Un\'arancia collegata al GND. La tieni in mano mentre suoni.', come: ['Con una mano tieni l\'arancia, con l\'altra tocchi la frutta.', 'L\'elettricità passa dalla frutta, attraverso il tuo corpo, fino all\'arancia: il circuito si chiude!'], sicurezza: [['solo', 'Tenere l\'arancia e suonare. La corrente è piccolissima: non si sente.']], mondo: 'un\'arancia e un coccodrillo dal GND' },
   },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
@@ -377,7 +392,7 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'apple', 'lemon', 'orange', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
 export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);

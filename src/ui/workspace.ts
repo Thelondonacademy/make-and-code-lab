@@ -14,6 +14,7 @@ import { BuzzGame } from './buzzgame';
 import { speak, canSpeak, stopSpeaking } from '../speech';
 import { tone, cheer } from '../audio';
 import { loadWork, saveWork, clearWork, saveStars, loadProgress } from '../store';
+const FRUITS = new Set(['banana', 'apple', 'lemon', 'orange']);
 const PUB: string = (import.meta as any).env?.BASE_URL || './';
 
 const BLOCKING = new Set(['microbit-off', 'short', 'servo-reversed']);
@@ -1064,6 +1065,16 @@ export class Workspace {
     return `${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`;
   }
 
+  /** C'è un frutto collegato al GND da tenere in mano (piano di frutta). */
+  private holdingGnd() {
+    const a = this.analysis;
+    return !!a && this.parts.some(f => FRUITS.has(f.type) && this.parts.some(mb => mb.type === 'microbit' && a.nets.same(`${f.id}:F`, `${mb.id}:GND`)));
+  }
+  /** I tasti del piano: frutti collegati a un pin. */
+  private fruitKeys() {
+    return this.parts.filter(f => ['banana', 'apple', 'lemon'].includes(f.type) && this.foilPins(f.id).length);
+  }
+
   /** I pin del micro:bit collegati (con i fili) alla stagnola. */
   private foilPins(id: string): string[] {
     const a = this.analysis;
@@ -1074,6 +1085,11 @@ export class Workspace {
   }
 
   private touchFoil(id: string, down: boolean) {
+    const p = this.parts.find(x => x.id === id);
+    if (p && FRUITS.has(p.type) && down && !this.holdingGnd()) {
+      toast(`${img('tangerine.svg', 26)}Con l'altra mano tieni un frutto collegato al GND, come l'arancia: così il circuito si chiude!`, { kind: 'warn', ms: 4000 });
+      return;
+    }
     for (const pin of this.foilPins(id)) this.rt.touchPin(pin, down);
     this.q<HTMLElement>('.mb-pet')?.classList.toggle('down', down);
   }
@@ -1110,7 +1126,7 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
@@ -1118,6 +1134,14 @@ export class Workspace {
     h.classList.toggle('hint-run', this.running);
     h.querySelector<HTMLElement>('.mb-light')?.addEventListener('click', () => this.toggleRoom());
     h.querySelector<HTMLElement>('.mb-buzz')?.addEventListener('click', () => this.openBuzz());
+    for (const fb of h.querySelectorAll<HTMLElement>('.mb-fruit')) {
+      const fid = fb.dataset.fruit!;
+      const press = (d: boolean) => { this.touchFoil(fid, d); fb.classList.toggle('down', d); };
+      fb.addEventListener('pointerdown', e => { e.preventDefault(); fb.setPointerCapture(e.pointerId); press(true); });
+      fb.addEventListener('pointerup', () => press(false));
+      fb.addEventListener('pointercancel', () => press(false));
+      fb.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(true); setTimeout(() => press(false), 150); } });
+    }
     const cov = h.querySelector<HTMLElement>('.mb-cover');
     if (cov) {
       cov.addEventListener('pointerdown', e => { e.preventDefault(); cov.setPointerCapture(e.pointerId); this.cover(true); });
@@ -1212,6 +1236,7 @@ export class Workspace {
       step: () => this.takeStep(),
       room: () => this.toggleRoom(),
       buzz: () => this.openBuzz(),
+      fruit: (id: string, d: boolean) => this.touchFoil(id, d),
       buzzPath: () => this.buzz?.clientPath() ?? [],
       buzzClose: () => this.closeBuzz(),
       mode: (m: Mode) => this.setMode(m),
