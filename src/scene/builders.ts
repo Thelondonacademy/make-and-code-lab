@@ -496,12 +496,54 @@ export function strapPose(type: string): { pos: THREE.Vector3; quat: THREE.Quate
   }
 }
 
-/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
-export function hostPose(host: string, type: string) {
-  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : null;
+// ---------- Luce notturna: il leggio di cartone ----------
+export const STAND = { tilt: 0.26, h: 8.2, w: 9.2 };
+
+function cardStand(): Built {
+  const g = new THREE.Group();
+  const card = mat(0xd9a660, { roughness: 0.95 });
+  g.add(mesh(new THREE.BoxGeometry(STAND.w, 0.4, 9.4), card, 0, 0.2, -0.3));
+  const { c, s, u, mid } = standFrame();
+  const panel = mesh(new THREE.BoxGeometry(STAND.w, STAND.h, 0.4), card, mid.x, mid.y, mid.z);
+  panel.rotation.x = -STAND.tilt;
+  g.add(panel);
+  // il bordino davanti che tiene fermo il micro:bit
+  g.add(mesh(new THREE.BoxGeometry(STAND.w, 0.9, 0.4), mat(0xc48f4c), 0, 0.85, 1.75));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(panel.geometry), new THREE.LineBasicMaterial({ color: 0xa87b3f }));
+  edges.position.copy(panel.position); edges.rotation.copy(panel.rotation);
+  g.add(edges);
+  void c; void s; void u;
+  return { group: g };
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap };
+function standFrame() {
+  const c = Math.cos(STAND.tilt), s = Math.sin(STAND.tilt);
+  const u = new THREE.Vector3(0, c, -s);            // su, lungo il pannello
+  const n = new THREE.Vector3(0, s, c);             // fuori dal pannello, verso di te
+  const bottom = new THREE.Vector3(0, 0.4, 1.2);
+  const mid = bottom.clone().add(u.clone().multiplyScalar(STAND.h / 2));
+  return { c, s, u, n, mid };
+}
+
+/** Dove sta un pezzo appoggiato al leggio. */
+export function standPose(type: string): { pos: THREE.Vector3; quat: THREE.Quaternion } | null {
+  const { c, s, n, u, mid } = standFrame();
+  const basis = (X: THREE.Vector3, Y: THREE.Vector3, Z: THREE.Vector3) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+  switch (type) {
+    // display verso di te, i pin in basso sul bordino
+    case 'microbit': return { pos: mid.clone().add(n.clone().multiplyScalar(0.2)).add(u.clone().multiplyScalar(-0.7)), quat: basis(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, s, c), new THREE.Vector3(0, -c, s)) };
+    // dietro, sdraiate sulla base
+    case 'battery': return { pos: new THREE.Vector3(0, 0.4, -2.6), quat: new THREE.Quaternion() };
+    default: return null;
+  }
+}
+
+/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
+export function hostPose(host: string, type: string) {
+  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : null;
+}
+
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();

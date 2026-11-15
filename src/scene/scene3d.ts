@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PARTS } from '../data/parts';
 import type { PartInst, Wire } from '../sim/circuit';
 import { buildPart, attachPose, bodyPose, hostPose, petLeadEnds, Built, mat, COLORS } from './builders';
-import { WIRE_COLORS, mountOf } from '../data/parts';
+import { WIRE_COLORS, mountOf, mountsOf } from '../data/parts';
 
 export type SceneMode = 'build' | 'wire' | 'code';
 
@@ -82,8 +82,10 @@ export class Scene3D {
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
     this.scene.background = new THREE.Color(0xf5f0ea);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xe6ddd2, 1.6));
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0xe6ddd2, 1.6);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+    this.sun = sun;
     sun.position.set(-20, 40, 26);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -273,6 +275,15 @@ export class Scene3D {
     const ends = petLeadEnds().map(v => v.applyMatrix4(inv));
     set(ends);
     PARTS.servo.terminals.forEach((t, i) => o.terminals.get(t.id)!.position.copy(ends[i]));
+  }
+
+  private hemi!: THREE.HemisphereLight;
+  private sun!: THREE.DirectionalLight;
+  /** Notte nella stanza: le luci si abbassano e le lucine del micro:bit si vedono meglio. */
+  setNight(on: boolean) {
+    this.hemi.intensity = on ? 0.22 : 1.6;
+    this.sun.intensity = on ? 0.12 : 1.8;
+    (this.scene.background as THREE.Color).set(on ? 0x2a2d45 : 0xf5f0ea);
   }
 
   private bumps = new Map<string, number>();
@@ -760,10 +771,11 @@ export class Scene3D {
       }
       return null;
     }
+    const hosts = mountsOf(o.inst.type);
     for (const b of this.objs.values()) {
-      if (b.inst.type !== mount || b.inst.attachedTo) continue;
+      if (!hosts.includes(b.inst.type as any) || b.inst.attachedTo) continue;
       const c = this.ownBox(b.built.group).getCenter(new THREE.Vector3());
-      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (mount === 'strap' ? 9 : 7.5) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
+      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (b.inst.type === 'petBody' ? 7.5 : 9) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
     }
     return null;
   }

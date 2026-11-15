@@ -783,7 +783,21 @@ export class Workspace {
     this.setRunning(false);
   }
 
+  // ---------- luce della stanza (luce notturna) ----------
+  private roomDark = false;
+  private covered = false;
+  private applyLight() {
+    const v = this.roomDark || this.covered ? 0 : 200;
+    this.rt.setSensor('light', v);
+    const sl = this.root.querySelector<HTMLInputElement>('[data-sensor=light]');
+    if (sl) sl.value = String(v);
+    this.scene.setNight(this.roomDark);
+  }
+  toggleRoom() { this.roomDark = !this.roomDark; this.applyLight(); this.renderHint(); }
+  cover(on: boolean) { this.covered = on; this.applyLight(); this.q<HTMLElement>('.mb-cover')?.classList.toggle('down', on); }
+
   private setRunning(r: boolean) {
+    if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); }
     this.running = r;
     this.root.classList.toggle('running', r);
     const btn = this.q('[data-act=run]');
@@ -971,6 +985,7 @@ export class Workspace {
       if (p.type === 'foilPatch') return `${img('luna.png', 24)}Stagnola sulla schiena! Nel mondo vero la incolli con la colla stick.`;
       return `${img('glue-stick.svg', 24)}Attaccato a Luna! Nel mondo vero lo incolli con la colla stick.`;
     }
+    if (host === 'cardStand') return `${img('package.svg', 24)}Appoggiato al leggio! Nel mondo vero lo fermi con un po' di nastro.`;
     if (host === 'strap') return `${img('socks.svg', 24)}Allacciato alla fascia! Nel mondo vero lo tieni fermo con l'elastico o il velcro.`;
     if (p.type === 'petTail') return `${img('luna-tail.png', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
     return `${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`;
@@ -1005,15 +1020,22 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${/Gesture\.Shake/.test(this.code) ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
     h.innerHTML = html;
     h.classList.toggle('hint-run', this.running);
+    h.querySelector<HTMLElement>('.mb-light')?.addEventListener('click', () => this.toggleRoom());
+    const cov = h.querySelector<HTMLElement>('.mb-cover');
+    if (cov) {
+      cov.addEventListener('pointerdown', e => { e.preventDefault(); cov.setPointerCapture(e.pointerId); this.cover(true); });
+      cov.addEventListener('pointerup', () => this.cover(false));
+      cov.addEventListener('pointercancel', () => this.cover(false));
+    }
     const stepBtn = h.querySelector<HTMLElement>('.mb-step');
     stepBtn?.addEventListener('click', () => this.takeStep());
-    const pet = h.querySelector<HTMLElement>('.mb-pet:not(.mb-step)');
+    const pet = h.querySelector<HTMLElement>('.mb-pet[data-foil]');
     if (pet) {
       const fid = pet.dataset.foil!;
       pet.addEventListener('pointerdown', e => { e.preventDefault(); pet.setPointerCapture(e.pointerId); this.touchFoil(fid, true); });
@@ -1096,6 +1118,7 @@ export class Workspace {
       stop: () => this.stopRun(),
       press: (b: 'A' | 'B') => { this.rt.pressButton(b, true); this.rt.pressButton(b, false); },
       step: () => this.takeStep(),
+      room: () => this.toggleRoom(),
       mode: (m: Mode) => this.setMode(m),
       state: () => ({
         parts: this.parts.map(p => ({ id: p.id, type: p.type, attachedTo: p.attachedTo })), wires: this.wires.length,

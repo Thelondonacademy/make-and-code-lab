@@ -30,7 +30,8 @@ export interface PartDef {
   safety?: Safety;       // etichetta mostrata nella tavolozza
   terminals: TerminalDef[];
   material?: boolean;    // materiale di riciclo: si può attaccare al braccio del servo
-  mountOn?: 'horn' | 'petBody' | 'strap'; // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
+  mountOn?: 'horn' | 'petBody' | 'strap' | 'cardStand';
+  mountAlso?: 'cardStand'; // un secondo posto dove si può attaccare // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
   tool?: boolean;        // attrezzo: solo scheda, non va sul banco
   size: [number, number, number]; // ingombro (cm) per posizionare e trascinare
   card: CardText;
@@ -51,7 +52,7 @@ const padZ = MB.d / 2 - 0.45;
 
 export const PARTS: Record<string, PartDef> = {
   microbit: {
-    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg', mountOn: 'strap',
+    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg', mountOn: 'strap', mountAlso: 'cardStand',
     size: [MB.w, MB.h, MB.d],
     terminals: [
       { id: 'P0', label: 'pin 0', kind: 'pad', pos: [-3.05, MB.h, padZ] },
@@ -75,7 +76,7 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   battery: {
-    type: 'battery', name: 'Pile 2×AAA', category: 'energia', icon: 'battery.svg', safety: 'adulto', mountOn: 'strap',
+    type: 'battery', name: 'Pile 2×AAA', category: 'energia', icon: 'battery.svg', safety: 'adulto', mountOn: 'strap', mountAlso: 'cardStand',
     size: [7, 2.2, 3.8],
     terminals: [{ id: 'PLUG', label: 'spina', kind: 'plug', fits: 'BAT', pos: [3.9, 0.9, 0] }],
     card: {
@@ -281,6 +282,16 @@ export const PARTS: Record<string, PartDef> = {
       mondo: 'un elastico largo, una fascia con il velcro, oppure un calzino lungo e un po\' di nastro',
     },
   },
+  cardStand: {
+    type: 'cardStand', name: 'Leggio di cartone', category: 'materiali', icon: 'package.svg',
+    size: [9.5, 8.5, 9.5], terminals: [],
+    card: {
+      cosa: 'Un cartoncino piegato a leggio. Tiene in piedi il micro:bit vicino al letto.',
+      come: ['Il micro:bit si appoggia davanti, con le lucine verso di te. Le pile stanno dietro.', 'Così il sensore di luce guarda la stanza.'],
+      sicurezza: [['adulto', 'Tagliare il cartoncino.'], ['solo', 'Piegarlo e attaccarlo con il nastro.']],
+      mondo: 'il cartone di una scatola di cereali e un po\' di nastro adesivo',
+    },
+  },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -314,10 +325,13 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
-export const mountOf = (type: string): 'horn' | 'petBody' | 'strap' | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
+export type Mount = 'horn' | 'petBody' | 'strap' | 'cardStand';
+export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
+/** Tutti i posti dove un pezzo si può attaccare (il micro:bit va sia sulla fascia sia sul leggio). */
+export const mountsOf = (type: string): Mount[] => [mountOf(type), PARTS[type]?.mountAlso].filter((m): m is Mount => !!m);
 
 export const SAFETY_LABEL: Record<Safety, string> = { solo: 'Da solo', adulto: 'Con un adulto', soloAdulto: "Solo l'adulto" };
 

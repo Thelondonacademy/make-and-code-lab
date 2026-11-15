@@ -329,3 +329,24 @@ describe('Il contapassi', () => {
     expect(mountOf('strap')).toBeNull();
   });
 });
+
+describe('La luce notturna', () => {
+  it('al buio accende tutte le lucine, con la luce le spegne', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.setSensor('light', 200);
+    rt.start(levelById('lucenotte')!.code);
+    await wait(80);
+    expect(f.frames.at(-1)).toBe('0'.repeat(25));
+    rt.setSensor('light', 0);
+    await wait(500);
+    expect(f.frames.at(-1)).toBe('1'.repeat(25));
+    rt.setSensor('light', 200);
+    await wait(600);
+    expect(f.frames.at(-1)).toBe('0'.repeat(25));
+    expect(rt.stats.clearsAfterLeds).toBeGreaterThan(0);
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  });
+});

@@ -55,6 +55,9 @@ export interface LessonDef {
 
 const has = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type);
 const powered = (c: LevelCtx) => c.analysis.powered.size > 0;
+const onHost = (c: LevelCtx, type: string, host: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === host);
+/** La soglia di buio della luce notturna (lightLevel() < N). */
+const lightGoal = (code: string) => { const m = code.match(/lightLevel\(\)\s*<\s*(\d+)/); return m ? Number(m[1]) : null; };
 const onStrap = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === 'strap');
 /** Il numero di passi del traguardo (passi < N). */
 const stepGoal = (code: string) => { const m = code.match(/passi\s*<\s*(\d+)/); return m ? Number(m[1]) : null; };
@@ -161,6 +164,65 @@ basic.forever(function () {
     real: {
       materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice', 'un elastico largo, una fascia con il velcro o un calzino lungo', 'un po\' di nastro adesivo'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Allaccia la fascia: comoda, non troppo stretta.'], ['solo', 'Cammina piano e guarda dove vai.']],
+    },
+  },
+  {
+    id: 'lucenotte',
+    lesson: 1,
+    title: 'La luce notturna',
+    icon: 'gi:moon',
+    intro: 'Quando fa buio, il micro:bit accende tutte le sue lucine. Quando torna la luce, si spegne da solo!',
+    palette: ['microbit', 'battery', 'cardStand'],
+    start: { parts: [], wires: [] },
+    code: `basic.forever(function () {
+    if (input.lightLevel() < 100) {
+        basic.showLeds(\`
+            # # # # #
+            # # # # #
+            # # # # #
+            # # # # #
+            # # # # #
+            \`)
+    } else {
+        basic.clearScreen()
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'logic'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
+      {
+        title: 'Fai notte', mode: 'code', text: 'Premi Prova! Poi premi "Spegni la luce". Si fa buio: il micro:bit si accende!',
+        goal: c => c.running && !!c.stats && c.stats.iconsShown.has('leds'),
+        why: { q: 'Come fa a sapere che è buio?', a: 'Le lucine del micro:bit sanno anche sentire la luce. Il micro:bit misura la luce con un numero: 0 è buio, 255 è tanta luce.' },
+      },
+      {
+        title: 'Fai giorno', mode: 'code', text: 'Ora premi "Accendi la luce". Torna giorno: il micro:bit si spegne da solo.',
+        goal: c => c.running && !!c.stats && c.stats.clearsAfterLeds > 0,
+        why: { q: 'Cosa vuol dire "se... altrimenti"?', a: 'Se la luce è meno di 100, accendi le lucine. Altrimenti, cioè se c\'è tanta luce, spegnile.' },
+      },
+      {
+        title: 'Il leggio di cartone', mode: 'build', text: 'Trascina il leggio sul banco. Poi trascina sopra il micro:bit e le pile.',
+        goal: c => onHost(c, 'microbit', 'cardStand') && onHost(c, 'battery', 'cardStand'),
+        checklist: c => [
+          { label: 'Leggio sul banco', done: has(c, 'cardStand') },
+          { label: 'Micro:bit davanti', done: onHost(c, 'microbit', 'cardStand') },
+          { label: 'Pile dietro', done: onHost(c, 'battery', 'cardStand') },
+        ],
+        why: { q: 'Posso coprirlo con un bicchiere?', a: 'Sì, ma sotto il bicchiere è sempre buio: resterebbe sempre acceso! Il sensore deve vedere la stanza. Per provarlo, coprilo con la mano.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Cambia il 100 con un altro numero, per esempio 50. Poi premi Prova!, spegni la luce oppure copri il micro:bit con la mano.',
+        goal: c => c.runInStep && lightGoal(c.code) !== null && lightGoal(c.code) !== 100 && !!c.stats && c.stats.iconsShown.has('leds'),
+        why: { q: 'Quale numero è giusto?', a: 'Dipende dalla tua stanza! Con un numero più piccolo si accende solo quando è proprio buio. Prova e guarda cosa succede.' },
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice', 'un cartoncino (va bene una scatola di cereali)', 'nastro adesivo', 'una torcia, oppure la tua mano per fare buio'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['adulto', 'Il cartoncino si taglia con un adulto.'], ['solo', 'Piega il leggio e attacca il micro:bit con il nastro.']],
     },
   },
   {
@@ -279,7 +341,7 @@ basic.forever(function () {
 ];
 
 export const LESSONS: LessonDef[] = [
-  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
+  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },

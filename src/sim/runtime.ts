@@ -41,6 +41,7 @@ export interface RunStats {
   buttons: Set<string>;
   pins: Set<string>;
   shakes: number;
+  clearsAfterLeds: number; // lucine spente dopo averle accese (luce notturna)
   servoWrites: number;
   pinWrites: number;
   tones: number;
@@ -67,7 +68,7 @@ export class MicrobitRuntime {
   constructor(private bridge: Bridge) {}
 
   private newStats(): RunStats {
-    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), shakes: 0, servoWrites: 0, pinWrites: 0, tones: 0 };
+    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), shakes: 0, clearsAfterLeds: 0, servoWrites: 0, pinWrites: 0, tones: 0 };
   }
 
   // ---------- avvio e arresto ----------
@@ -357,7 +358,7 @@ export class MicrobitRuntime {
         rt.show(bits.slice(0, 25).padEnd(25, '0'));
         await rt.sleep(interval);
       },
-      clearScreen: () => { rt.leds.fill(0); rt.bridge.display(rt.leds); },
+      clearScreen: () => { if (rt.leds.some(v => v > 0) && rt.stats.iconsShown.has('leds')) rt.stats.clearsAfterLeds++; rt.leds.fill(0); rt.bridge.display(rt.leds); },
       pause: async (ms: number) => { await rt.sleep(Number(ms) || 0); },
       forever: (fn: () => Promise<any>) => {
         rt.spawn(async () => {
