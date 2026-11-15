@@ -30,8 +30,8 @@ class Stopped extends Error { constructor() { super('fermato'); } }
 class Unsupported extends Error { constructor(public what: string) { super('non supportato: ' + what); } }
 
 const UNSUPPORTED_NS: Record<string, string> = {
-  radio: 'La radio', game: 'I giochi con gli sprite', bluetooth: 'Il Bluetooth', datalogger: 'Il registratore di dati',
-  neopixel: 'Le strip NeoPixel', power: 'Il risparmio energetico',
+  radio: 'La radio non c\'è', game: 'I giochi con gli sprite non ci sono', bluetooth: 'Il Bluetooth non c\'è', datalogger: 'Il registratore di dati non c\'è',
+  neopixel: 'Le strisce NeoPixel non ci sono', power: 'Il risparmio energetico non c\'è',
 };
 
 export interface RunStats {
@@ -131,10 +131,10 @@ export class MicrobitRuntime {
     let msg = 'Il programma si è fermato per un errore.';
     let detail = String(e?.message || e);
     if (e instanceof Unsupported) {
-      msg = `${e.what} non c'è ancora nel laboratorio. Arriverà presto!`;
+      msg = `${e.what} ancora nel laboratorio. Arriverà presto!`;
     } else if (e instanceof ReferenceError) {
       const name = /^(\w+)/.exec(e.message)?.[1] || '';
-      msg = UNSUPPORTED_NS[name] ? `${UNSUPPORTED_NS[name]} non c'è ancora nel laboratorio. Arriverà presto!`
+      msg = UNSUPPORTED_NS[name] ? `${UNSUPPORTED_NS[name]} ancora nel laboratorio. Arriverà presto!`
         : `Nel codice c'è un blocco che non conosco ancora: «${name}».`;
     } else if (e instanceof TypeError && /is not a function|undefined/.test(e.message)) {
       msg = 'Nel codice c\'è un blocco che il laboratorio non conosce ancora.';
@@ -174,19 +174,31 @@ export class MicrobitRuntime {
     }
   }
 
+  private abDown = false;
+  private longTimer: any = 0;
+  /** Come il micro:bit vero: se tieni premuti A e B insieme scatta "A+B" (e non A o B da soli). */
   pressButton(b: 'A' | 'B' | 'AB', down: boolean) {
+    if (b === 'AB') { this.pressButton('A', down); this.pressButton('B', down); return; }
     if (down) {
       this.buttonDown.add(b);
       this.stats.buttons.add(b);
+      if (this.buttonDown.has('A') && this.buttonDown.has('B')) { this.abDown = true; this.stats.buttons.add('AB'); }
     } else {
       if (!this.buttonDown.has(b)) return;
       this.buttonDown.delete(b);
+      if (this.abDown) {
+        if (!this.buttonDown.has('A') && !this.buttonDown.has('B')) { this.abDown = false; this.fire('btn:AB'); }
+        return;
+      }
       this.fire('btn:' + b);
     }
   }
   touchLogo(down: boolean) {
-    if (down) { this.logoDown = true; this.fire('logo:Pressed'); this.fire('logo:Touched'); }
-    else if (this.logoDown) { this.logoDown = false; this.fire('logo:Released'); }
+    clearTimeout(this.longTimer);
+    if (down) {
+      this.logoDown = true; this.fire('logo:Pressed'); this.fire('logo:Touched');
+      this.longTimer = setTimeout(() => { if (this.logoDown) this.fire('logo:LongPressed'); }, 1000);
+    } else if (this.logoDown) { this.logoDown = false; this.fire('logo:Released'); }
   }
   touchPin(pin: string, down: boolean) {
     if (down) { this.pinTouched.add(pin); this.fire('pin:' + pin + ':pressed'); }
@@ -259,11 +271,8 @@ export class MicrobitRuntime {
   private createApi() {
     const rt = this;
     const gen = () => rt.generation;
-    const on = (key: string, fn: () => Promise<any>) => {
-      const list = rt.handlers.get(key) || [];
-      list.push(fn);
-      rt.handlers.set(key, list);
-    };
+    // come MakeCode: per ogni evento vale l'ultimo blocco "quando…"
+    const on = (key: string, fn: () => Promise<any>) => { rt.handlers.set(key, [fn]); };
     const enumOf = (names: string[]) => Object.fromEntries(names.map(n => [n, n]));
     const pinNames = ['P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16', 'P19', 'P20'];
     const checkPin = (p: string) => {
@@ -436,6 +445,7 @@ export class MicrobitRuntime {
       createSoundExpression: () => playable('effect', {}),
       createSoundEffect: () => playable('effect', {}),
       builtinSoundEffect: () => playable('effect', {}),
+      builtinPlayableSoundEffect: () => playable('effect', {}),
       play: async (p: any, mode: string) => {
         const wait = mode === 'UntilDone';
         if (!p || !p.__playable) return;
@@ -486,12 +496,25 @@ export class MicrobitRuntime {
 
     const unsupported = (label: string) => new Proxy({}, { get: (_t, prop) => (typeof prop === 'string' ? () => { throw new Unsupported(label); } : undefined) });
 
+    const randint = (a: number, b: number) => Math.floor(Math.random() * (Math.floor(b) - Math.ceil(a) + 1)) + Math.ceil(a);
+    const MathExt = Object.assign(Object.create(Math), {
+      randomBoolean: () => Math.random() < 0.5,
+      randomRange: randint,
+      map: (v: number, fl: number, fh: number, tl: number, th: number) => ((v - fl) * (th - tl)) / (fh - fl) + tl,
+      constrain: (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v)),
+      idiv: (a: number, b: number) => Math.trunc(a / b),
+      imul: Math.imul,
+      roundWithPrecision: (v: number, d: number) => Math.round(v * 10 ** d) / 10 ** d,
+    });
     const NoteEnum: Record<string, number> = { ...NOTE };
     const api = {
+      Math: MathExt,
+      convertToText: (v: any) => String(v),
+      parseFloat, parseInt,
       basic, input, led, pins, music, servos, control, serial, images,
       radio: unsupported(UNSUPPORTED_NS.radio), game: unsupported(UNSUPPORTED_NS.game), bluetooth: unsupported(UNSUPPORTED_NS.bluetooth),
       datalogger: unsupported(UNSUPPORTED_NS.datalogger), power: unsupported(UNSUPPORTED_NS.power),
-      randint: (a: number, b: number) => Math.floor(Math.random() * (Math.floor(b) - Math.ceil(a) + 1)) + Math.ceil(a),
+      randint,
       Button: enumOf(['A', 'B', 'AB']),
       IconNames: enumOf(Object.keys(ICONS)),
       ArrowNames: enumOf(Object.keys(ARROWS)),

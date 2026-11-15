@@ -2,9 +2,10 @@
 # Pubblica dist/ sul ramo gh-pages (GitHub Pages: Settings → Pages → Branch gh-pages, cartella / root).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-npm run build
+OUT=${OUT:-dist}
+npx vite build --outDir "$OUT" --emptyOutDir
 TMP=$(mktemp -d)
-cp -r dist/. "$TMP"/
+cp -r "$OUT"/. "$TMP"/
 touch "$TMP/.nojekyll"
 cd "$TMP"
 git init -q -b gh-pages

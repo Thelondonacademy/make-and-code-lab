@@ -15,7 +15,13 @@ export interface LevelCtx {
   code: string;
   codeChangedSinceStart: boolean;
   ranChangedCode: boolean;
+  runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
 }
+
+/** Le pause nel codice (basic.pause(N)). */
+const pauses = (code: string) => [...code.matchAll(/basic\.pause\((\d+)\)/g)].map(m => Number(m[1]));
+/** I disegni usati nel codice. */
+const icons = (code: string) => [...code.matchAll(/IconNames\.(\w+)/g)].map(m => m[1]);
 
 export interface Step {
   title: string;
@@ -76,12 +82,12 @@ export const LEVELS: Level[] = [
       },
       {
         title: 'Guarda il cuore', mode: 'code', text: 'Il codice è già pronto. Premi Prova! e guarda le lucine.',
-        goal: c => c.running && !!c.stats?.iconsShown.has('Heart'),
+        goal: c => c.running && !!c.stats && c.stats.iconsShown.size > 0,
         why: { q: 'Cosa fa il blocco "per sempre"?', a: 'Ripete i blocchi dentro di lui, ancora e ancora, senza fermarsi mai.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Nel codice scegli un altro disegno al posto del cuore. Poi premi Prova!',
-        goal: c => c.ranChangedCode && c.running,
+        goal: c => c.runInStep && (icons(c.code).some(n => n !== 'Heart' && n !== 'SmallHeart') || /showLeds|showString|showNumber|showArrow/.test(c.code)) && !!c.stats && c.stats.iconsShown.size + c.stats.textsShown.length > 0,
       },
     ],
     real: {
@@ -147,7 +153,7 @@ input.onButtonPressed(Button.A, function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Fai scodinzolare la coda più veloce: metti un numero più piccolo nelle pause. Poi premi Prova! e A.',
-        goal: c => c.ranChangedCode && c.servoMoves >= 2,
+        goal: c => c.runInStep && pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 && c.servoMoves >= 2,
       },
     ],
     real: {

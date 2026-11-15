@@ -65,7 +65,7 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
   const powered = new Set<string>();
   const issues: Issue[] = [];
   const microbits = parts.filter(p => p.type === 'microbit').map(p => p.id);
-  const add = (i: Issue) => { if (!issues.some(x => x.id === i.id)) issues.push(i); };
+  const add = (i: Issue) => { if (!issues.some(x => x.id === i.id && x.refs.join() === i.refs.join())) issues.push(i); };
 
   for (const p of parts) for (const t of PARTS[p.type]?.terminals || []) { nets.find(ref(p.id, t.id)); paths.find(ref(p.id, t.id)); }
 
@@ -125,7 +125,8 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
     const gndOk = hasIn(nets, gnd, isGnd);
     const sigPin = pinOn(nets, sig);
     servos.push({ id: s.id, powered: vccPower, grounded: gndOk, sig: sigPin });
-    const reversed = hasIn(nets, vcc, isGnd) && hasIn(nets, gnd, (p, t) => p.type === 'microbit' && t === '3V');
+    const is3V = (p: PartInst, t: string) => p.type === 'microbit' && t === '3V';
+    const reversed = hasIn(nets, vcc, isGnd) && hasIn(nets, gnd, is3V) && !hasIn(nets, vcc, is3V) && !hasIn(nets, gnd, isGnd);
     if (reversed) {
       add({ id: 'servo-reversed', level: 'error', title: 'Rosso e marrone sono scambiati', text: 'Il filo rosso va al 3V e il marrone al GND. Al contrario il servo si può rompere.', refs: [vcc, gnd] });
       continue;
@@ -134,7 +135,7 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
     else if (!vccPower) add({ id: 'servo-no-power', level: 'error', title: 'Il servo non ha energia', text: 'Collega il filo rosso del servo al 3V del micro:bit.', refs: [vcc] });
     if (!gndOk) add({ id: 'servo-no-gnd', level: 'error', title: 'L\'energia non torna indietro', text: 'Collega il filo marrone del servo al GND. L\'energia deve fare il giro.', refs: [gnd] });
     if (hasIn(nets, sig, (p, t) => p.type === 'microbit' && (t === '3V' || t === 'GND'))) {
-      add({ id: 'servo-sig-power', level: 'error', title: 'Il filo arancione è nel posto sbagliato', text: 'Il filo arancione porta il messaggio: va su un pin, il 0, l\'1 o il 2.', refs: [sig] });
+      add({ id: 'servo-sig-power', level: 'error', title: 'Il filo arancione è nel posto sbagliato', text: 'Il filo arancione porta il messaggio: va su un pin: lo 0, l\'1 o il 2.', refs: [sig] });
     } else if (!sigPin) {
       add({ id: 'servo-no-signal', level: 'error', title: 'Il servo non riceve messaggi', text: 'Collega il filo arancione del servo al pin 0.', refs: [sig] });
     }
@@ -152,11 +153,14 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
     } else if (aHigh && kLow) {
       const direct = hasIn(nets, a, (p, t) => isPower(p, t) || isPin(p, t)) && hasIn(nets, k, isGnd);
       if (direct) add({ id: 'led-no-resistor', level: 'warning', title: 'Metti una resistenza', text: 'La resistenza è come un rubinetto: fa passare poca energia e protegge il LED.', refs: [a, k] });
-    } else if ((aHigh || aLow || kHigh || kLow)) {
+    } else if (wires.some(w => [w.a, w.b].includes(a)) !== wires.some(w => [w.a, w.b].includes(k))) {
       add({ id: 'led-open', level: 'tip', title: 'Il LED ha una gamba libera', text: 'Per accendersi il LED ha bisogno di due fili: uno sulla gamba lunga e uno sulla corta.', refs: [a, k] });
     }
   }
 
+  // prima gli errori più precisi (di solito è l'ultimo filo messo), poi quelli generali
+  const PRIORITY: Record<string, number> = { short: 0, 'servo-reversed': 1, 'servo-sig-power': 2, 'servo-vcc-pin': 3, 'led-reversed': 4, 'microbit-off': 5 };
+  issues.sort((x, y) => (PRIORITY[x.id] ?? 9) - (PRIORITY[y.id] ?? 9));
   return { nets, paths, powered, issues, servos, microbits };
 }
 

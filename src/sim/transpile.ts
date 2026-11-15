@@ -23,13 +23,14 @@ export function transpile(source: string): string {
   try {
     js = transform(source, { transforms: ['typescript'], disableESTransforms: true }).code;
   } catch (e: any) {
-    throw new TranspileError('Il codice ha un errore di scrittura: ' + String(e.message || e).split('\n')[0]);
+    const m = /\((\d+):\d+\)/.exec(String(e?.message || ''));
+    throw new TranspileError('Nel codice c\'è un errore di scrittura' + (m ? ` vicino alla riga ${m[1]}` : '') + '. Controlla parentesi e virgole.', m ? Number(m[1]) : undefined);
   }
   let ast: AnyNode;
   try {
     ast = acorn.parse(js, { ecmaVersion: 'latest', sourceType: 'script', allowReturnOutsideFunction: true, locations: true }) as AnyNode;
   } catch (e: any) {
-    throw new TranspileError('Il codice ha un errore di scrittura vicino alla riga ' + (e.loc?.line ?? '?'), e.loc?.line);
+    throw new TranspileError('Nel codice c\'è un errore di scrittura vicino alla riga ' + (e.loc?.line ?? '?') + '. Controlla parentesi e virgole.', e.loc?.line);
   }
 
   // 1) segna le funzioni passate ai metodi sincroni degli array: restano sincrone

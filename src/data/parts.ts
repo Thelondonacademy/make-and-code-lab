@@ -16,7 +16,8 @@ export interface TerminalDef {
 export interface CardText {
   cosa: string;           // Cos'è?
   come: string[];         // Come funziona (2-3 frasi)
-  sicurezza: [Safety, string][];
+  sicurezza: [Safety, string][];   // chi fa cosa
+  attenzione?: string;            // un divieto o un pericolo
   mondo: string;          // Nel mondo vero ti serve...
 }
 
@@ -65,7 +66,8 @@ export const PARTS: Record<string, PartDef> = {
         'Tu gli scrivi le istruzioni con i blocchi. Lui le fa, una dopo l\'altra.',
         'Con i pin 0, 1 e 2 manda messaggi agli altri pezzi.',
       ],
-      sicurezza: [['solo', 'Toccarlo e programmarlo.'], ['adulto', 'Non bagnarlo e non toccare i pin con le dita bagnate.']],
+      sicurezza: [['solo', 'Toccarlo e programmarlo.'], ['adulto', 'Collegarlo al computer con il cavo USB.']],
+      attenzione: 'Non bagnarlo e non toccarlo con le mani bagnate.',
       mondo: 'un micro:bit V2 e il cavo USB',
     },
   },
@@ -79,7 +81,8 @@ export const PARTS: Record<string, PartDef> = {
         'Due pile piccole insieme fanno 3 volt.',
         'La spina bianca va nella presa in alto del micro:bit.',
       ],
-      sicurezza: [['adulto', 'Mettere le pile per il verso giusto: + con +.'], ['soloAdulto', 'Le pile non si aprono e non si mettono in bocca.']],
+      sicurezza: [['adulto', 'Mettere le pile per il verso giusto: + con +.'], ['soloAdulto', 'Buttare le pile scariche nel contenitore giusto.']],
+      attenzione: 'Le pile non si aprono e non si mettono in bocca.',
       mondo: 'un portapile per 2 pile AAA con la spina, e 2 pile AAA',
     },
   },
@@ -97,7 +100,8 @@ export const PARTS: Record<string, PartDef> = {
         'Il micro:bit gli dice un numero da 0 a 180. Il braccio gira fin lì.',
         'Rosso e marrone portano l\'energia. L\'arancione porta il messaggio.',
       ],
-      sicurezza: [['solo', 'Attaccare i coccodrilli ai fili.'], ['soloAdulto', 'Incollare il servo con la colla a caldo.'], ['adulto', 'Non girare il braccio con le mani: si rompe.']],
+      sicurezza: [['solo', 'Attaccare i coccodrilli ai fili.'], ['soloAdulto', 'Incollare il servo con la colla a caldo.']],
+      attenzione: 'Non girare il braccio con le mani: dentro ci sono ingranaggi piccoli che si rompono.',
       mondo: 'un servo SG90 e 3 cavi a coccodrillo',
     },
   },
@@ -115,7 +119,8 @@ export const PARTS: Record<string, PartDef> = {
         'La gamba lunga va verso il pin. La corta va al GND.',
         'Se lo metti al contrario non si accende.',
       ],
-      sicurezza: [['solo', 'Collegarlo con i coccodrilli.'], ['adulto', 'Le gambe sono a punta: attenzione alle dita.']],
+      sicurezza: [['solo', 'Collegarlo con i coccodrilli.']],
+      attenzione: 'Le gambe sono a punta: attenzione alle dita.',
       mondo: 'un LED rosso, una resistenza e 3 cavi a coccodrillo',
     },
   },
@@ -212,7 +217,8 @@ export const PARTS: Record<string, PartDef> = {
     card: {
       cosa: 'Una pistola che scioglie la colla. Attacca forte il cartone e il servo.',
       come: ['La punta e la colla diventano caldissime.', 'Nel laboratorio, quando attacchi un pezzo al servo, immagina che lo faccia l\'adulto.'],
-      sicurezza: [['soloAdulto', 'La usa solo l\'adulto. Brucia!'], ['solo', 'Tu dici all\'adulto dove mettere la colla.']],
+      sicurezza: [['soloAdulto', 'Usare la pistola e la colla.'], ['solo', 'Dire all\'adulto dove mettere la colla.']],
+      attenzione: 'La punta e la colla bruciano: non toccarle, neanche quando sembrano fredde.',
       mondo: 'una pistola per colla a caldo (la usa l\'adulto)',
     },
   },

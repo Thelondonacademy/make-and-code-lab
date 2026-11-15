@@ -197,3 +197,62 @@ describe('hardware', () => {
     expect(hw.ledLevel.get('l')).toBe(0);
   });
 });
+
+describe('correzioni dal controllo qualità', () => {
+  it('A+B insieme fa scattare solo A+B', async () => {
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(`input.onButtonPressed(Button.A, function () { servos.P0.setAngle(1) })
+input.onButtonPressed(Button.AB, function () { servos.P0.setAngle(2) })`);
+    await wait(30);
+    rt.pressButton('A', true); rt.pressButton('B', true); rt.pressButton('A', false); rt.pressButton('B', false);
+    await wait(30);
+    rt.pressButton('A', true); rt.pressButton('A', false);
+    await wait(30);
+    expect(f.servo.filter(s => s[1] !== null).map(s => s[1])).toEqual([2, 1]);
+    rt.stop();
+  });
+  it('blocchi Matematica e Testo comuni', async () => {
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(`let b = Math.randomBoolean()
+let x = Math.map(5, 0, 10, 0, 100) + Math.constrain(500, 0, 10) + Math.idiv(7, 2) + Math.roundWithPrecision(1.234, 1)
+serial.writeLine(convertToText(x))
+music.play(music.builtinPlayableSoundEffect(soundExpression.giggle), music.PlaybackMode.InBackground)`);
+    await wait(40);
+    expect(f.errors).toEqual([]);
+    expect(f.log).toContain('log 64.2');
+    rt.stop();
+  });
+  it('solo l\'ultimo "quando premi A" vale', async () => {
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(`input.onButtonPressed(Button.A, function () { servos.P0.setAngle(10) })
+input.onButtonPressed(Button.A, function () { servos.P0.setAngle(20) })`);
+    await wait(20);
+    rt.pressButton('A', true); rt.pressButton('A', false);
+    await wait(30);
+    expect(f.servo.filter(s => s[1] !== null).map(s => s[1])).toEqual([20]);
+    rt.stop();
+  });
+  it('niente "scambiati" se rosso e marrone sono giusti ma c\'è un corto', () => {
+    const parts = [P('mb', 'microbit'), P('bat', 'battery'), P('s', 'servo')];
+    const list = ids(parts, [W('bat:PLUG', 'mb:BAT'), W('s:VCC', 'mb:3V'), W('s:GND', 'mb:GND'), W('s:VCC', 'mb:GND'), W('s:SIG', 'mb:P0')]);
+    expect(list).toContain('short');
+    expect(list).not.toContain('servo-reversed');
+  });
+  it('"gamba libera" solo se una gamba non ha fili', () => {
+    const parts = [P('mb', 'microbit'), P('bat', 'battery'), P('l', 'led')];
+    const pw = W('bat:PLUG', 'mb:BAT');
+    expect(ids(parts, [pw, W('l:A', 'mb:P0'), W('l:K', 'mb:P1')])).not.toContain('led-open');
+    expect(ids(parts, [pw, W('l:A', 'mb:P0')])).toContain('led-open');
+  });
+  it('l\'errore più preciso viene prima', () => {
+    const parts = [P('mb', 'microbit'), P('bat', 'battery'), P('s', 'servo')];
+    expect(ids(parts, [W('bat:PLUG', 'mb:BAT'), W('s:SIG', 'mb:3V')])[0]).toBe('servo-sig-power');
+  });
+  it('errore di scrittura in italiano, senza testo inglese', () => {
+    expect(() => transpile('basic.showNumber(1 2)')).toThrow(/riga 1/);
+    try { transpile('basic.showNumber(1 2)'); } catch (e: any) { expect(e.message).not.toMatch(/Unexpected|expected/); }
+  });
+});

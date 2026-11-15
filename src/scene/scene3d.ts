@@ -45,7 +45,7 @@ export class Scene3D {
   private drag: { id: string; offset: THREE.Vector3; startX: number; startY: number; moved: boolean } | null = null;
   private down: { x: number; y: number; t: number } | null = null;
   private pressed: { kind: 'button' | 'logo' | 'pad'; name: string } | null = null;
-  private clock = new THREE.Clock();
+  private clock = new THREE.Timer();
   private raf = 0;
   private disposed = false;
   private wires: Wire[] = [];
@@ -56,7 +56,7 @@ export class Scene3D {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(this.renderer.domElement);
     this.renderer.domElement.setAttribute('aria-label', 'Banco di lavoro in 3D');
@@ -139,7 +139,9 @@ export class Scene3D {
   private loop = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    const dt = Math.min(0.05, this.clock.getDelta());
+    // tempo vero (anche se il computer è lento il servo gira alla velocità giusta)
+    this.clock.update();
+    const dt = Math.min(0.25, this.clock.getDelta());
     this.cb.onFrame(dt);
     const t = performance.now() / 1000;
     for (const h of this.highlights) { const s = 1 + 0.25 * Math.sin(t * 6); h.scale.set(s, s, s); }

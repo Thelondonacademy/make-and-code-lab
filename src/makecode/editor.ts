@@ -80,6 +80,7 @@ export class CodeEditor {
     if (!this.iframe) { this.create(); return; }
     if (this.status !== 'ready') return; // verrà caricato al primo avvio
     await this.driver!.importProject({ project: this.project, filters: filtersFor(spec.namespaces) });
+    await this.tidy();
   }
 
   private create() {
@@ -95,7 +96,7 @@ export class CodeEditor {
       filters: this.spec ? filtersFor(this.spec.namespaces) : undefined,
       searchBar: false,
       onWorkspaceLoaded: () => { clearTimeout(this.timer); this.setStatus('ready'); this.readyResolve(); },
-      onEditorContentLoaded: () => { clearTimeout(this.timer); if (this.status !== 'ready') { this.setStatus('ready'); this.readyResolve(); } },
+      onEditorContentLoaded: () => { clearTimeout(this.timer); if (this.status !== 'ready') { this.setStatus('ready'); this.readyResolve(); } void this.tidy(); },
       onWorkspaceSave: e => {
         const text = e.project?.text;
         if (!text || !e.project.header || e.project.header.id !== this.project?.header?.id) return;
@@ -108,6 +109,14 @@ export class CodeEditor {
     this.host.appendChild(iframe);
     this.driver.initialize();
     this.timer = window.setTimeout(() => { if (this.status !== 'ready') this.setStatus('offline'); }, 30000);
+  }
+
+  /** Dopo ogni caricamento: sempre i blocchi (non il JavaScript) e niente secondo simulatore. */
+  private async tidy() {
+    try {
+      if (!this.project?.text?.['main.blocks']) await this.driver!.switchBlocks();
+      await this.driver!.hideSimulator();
+    } catch { /* MakeCode vecchio o occupato: non è grave */ }
   }
 
   /** Chiede a MakeCode il file .hex da mandare al micro:bit vero. */

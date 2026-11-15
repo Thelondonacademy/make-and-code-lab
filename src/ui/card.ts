@@ -20,7 +20,8 @@ export function openCard(type: string) {
     ${canSpeak() ? `<button class="btn btn-soft btn-listen">${icon('ph:speaker-high-fill', 22)}Ascolta la scheda</button>` : ''}
     <div><h3>Come funziona</h3><ul class="card-list">${c.come.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
     <div class="card-safe"><h3>${icon('ph:shield-check-fill', 24, 'color:#2E8B57')}Sicurezza</h3>
-      <ul>${c.sicurezza.map(([s, t]) => `<li>${safetyTag(s)}<span>${esc(t)}</span></li>`).join('')}</ul></div>
+      <ul>${c.sicurezza.map(([s, t]) => `<li>${safetyTag(s)}<span>${esc(t)}</span></li>`).join('')}</ul>
+      ${c.attenzione ? `<p class="card-warn">${icon('ph:warning-fill', 20)}<span><b>Attenzione:</b> ${esc(c.attenzione)}</span></p>` : ''}</div>
     <div class="card-real">${icon('ph:shopping-bag-fill', 28, 'color:#EBBC4A')}<span>Nel mondo vero ti serve: <b>${esc(c.mondo)}</b>.</span></div>
   </div>`, { onClose: stopSpeaking });
   m.root.querySelector('.btn-listen')?.addEventListener('click', () => speak(all));

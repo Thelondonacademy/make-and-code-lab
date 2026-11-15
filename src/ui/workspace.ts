@@ -49,6 +49,10 @@ export class Workspace {
   private finished = false;
   private evalTimer = 0;
   private category: string = 'tutti';
+  private stepEpoch = 0;
+  private runEpoch = -1;
+  private runCode = '';
+  private shown: Issue[] = [];
 
   constructor(public level: Level, private host: HTMLElement) {
     this.code = level.code;
@@ -73,7 +77,7 @@ export class Workspace {
       led: (id, l) => this.scene?.setLed(id, this.running ? l : 0),
       tone: (f, ms) => tone(f, ms),
       log: t => toast(`${icon('ph:info-fill', 20)}${esc(t)}`),
-      error: (m, d) => { this.runError = { id: 'run-error', level: 'error', title: 'Il programma si è fermato', text: m, refs: [] }; if (d) console.warn('[programma]', d); this.setRunning(false); this.renderIssues(); },
+      error: (m, d) => { this.runError = { id: 'run-error', level: 'error', title: this.running ? 'Il programma si è fermato' : 'C\'è un errore nel codice', text: m, refs: [] }; if (d) console.warn('[programma]', d); this.setRunning(false); this.renderIssues(); },
       issue: i => { if (!this.runtimeIssues.some(x => x.id === i.id)) { this.runtimeIssues.push(i); this.issueIdx = 0; this.renderIssues(); } },
     });
     this.rt = new MicrobitRuntime(this.hw);
@@ -136,12 +140,11 @@ export class Workspace {
               <button class="round" data-act="zout" aria-label="Allontana">${icon('ph:magnifying-glass-minus-bold', 26)}</button>
             </div>
             <div class="sensors" hidden>
-              <div class="sensors-title">${icon('ph:hand-tap-fill', 20)}Prova i sensori</div>
+              <button class="sensors-title" data-act="sensors" aria-expanded="false">${icon('ph:hand-tap-fill', 20)}Prova i sensori</button>
               <label>${icon('ph:sun-fill', 20)}Luce<input type="range" min="0" max="255" value="128" data-sensor="light"></label>
               <label>${icon('ph:thermometer-fill', 20)}Caldo<input type="range" min="-5" max="45" value="21" data-sensor="temperature"></label>
               <label>${icon('ph:speaker-high-fill', 20)}Rumore<input type="range" min="0" max="255" value="40" data-sensor="sound"></label>
               <button class="btn btn-small" data-act="shake">${icon('ph:vibrate-fill', 18)}Scuoti</button>
-              <p>Tocca i pulsanti A e B sul micro:bit!</p>
             </div>
           </div>
           <div class="issue-bar" hidden></div>
@@ -214,7 +217,11 @@ export class Workspace {
         if ((e.target as HTMLElement).closest('.part-info') || p.tool) { openCard(t); return; }
         this.addPart(t);
       });
-      b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.tool ? openCard(t) : this.addPart(t); } });
+      b.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        if ((e.target as HTMLElement).closest('.part-info') || p.tool) openCard(t); else this.addPart(t);
+      });
       grid.appendChild(b);
     }
   }
@@ -293,6 +300,7 @@ export class Workspace {
       case 'info': { const p = this.parts.find(x => x.id === this.selected); if (p) openCard(p.type); break; }
       case 'delete': if (this.selected) this.removePart(this.selected); break;
       case 'shake': this.rt.gesture('Shake'); break;
+      case 'sensors': { const b = this.q('.sensors'); const open = !b.classList.contains('open'); b.classList.toggle('open', open); this.q('.sensors-title').setAttribute('aria-expanded', String(open)); break; }
       case 'download': void this.download(); break;
       case 'usecode': {
         const ta = this.q<HTMLTextAreaElement>('.mk-offline textarea');
@@ -304,7 +312,7 @@ export class Workspace {
       case 'next': this.goStep(this.step + 1); break;
       case 'listen': { const s = this.level.steps[this.step]; if (s) speak(`${s.title}. ${s.text}`); break; }
       case 'show-issue': this.showIssue(); break;
-      case 'listen-issue': { const i = this.currentIssues()[this.issueIdx]; if (i) speak(`${i.title}. ${i.text}`); break; }
+      case 'listen-issue': { const i = this.shown[this.issueIdx]; if (i) speak(`${i.title}. ${i.text}`); break; }
       case 'next-issue': this.issueIdx++; this.renderIssues(); break;
       case 'restart': this.restart(); break;
     }
@@ -432,7 +440,7 @@ export class Workspace {
   }
 
   undo() {
-    if (this.running) return;
+    if (this.running) { toast('Prima ferma la prova, poi puoi annullare.'); return; }
     const s = this.undoStack.pop();
     if (!s) { toast('Non c\'è niente da annullare.'); return; }
     const v = JSON.parse(s);
@@ -457,6 +465,7 @@ export class Workspace {
       this.codeChanged = false;
       this.ranChanged = false;
       this.mkProject = null;
+      this.undoStack = [];
       this.setCode(this.level.code, false);
       void this.editor.open(this.codeSpec(), null);
       this.sync();
@@ -487,6 +496,8 @@ export class Workspace {
   setCode(ts: string, persist = true) {
     const changed = norm(ts) !== norm(this.code);
     this.code = ts;
+    const ta = this.root.querySelector<HTMLTextAreaElement>('.mk-offline textarea');
+    if (ta && document.activeElement !== ta) ta.value = ts;
     if (norm(ts) !== norm(this.level.code)) this.codeChanged = true;
     if (persist) this.persist();
     if (changed && this.running) { this.run(); }
@@ -573,6 +584,8 @@ export class Workspace {
     const err = this.rt.start(this.code);
     if (err) return;
     if (this.codeChanged) this.ranChanged = true;
+    this.runEpoch = this.stepEpoch;
+    this.runCode = this.code;
     this.setRunning(true);
     this.renderIssues();
   }
@@ -624,6 +637,7 @@ export class Workspace {
     if (!this.running && !fromRun && !this.runError) {
       list = list.filter(i => i.level !== 'tip' && (i.id !== 'microbit-off' || this.triedRun) && this.issueRelevant(i));
     }
+    this.shown = list;
     if (!list.length) { bar.hidden = true; this.scene.highlight([]); return; }
     if (this.issueIdx >= list.length) this.issueIdx = 0;
     const i = list[this.issueIdx];
@@ -647,7 +661,7 @@ export class Workspace {
   }
 
   private showIssue() {
-    const i = this.currentIssues()[this.issueIdx];
+    const i = this.shown[this.issueIdx];
     if (!i?.refs.length) return;
     const p = this.scene.termWorld(i.refs[0]);
     if (p) this.scene.focusOn(p.x, p.z, 20);
@@ -669,6 +683,7 @@ export class Workspace {
       parts: this.parts, wires: this.wires, analysis: this.analysis, running: this.running,
       stats: this.running ? this.rt.stats : null, servoMoves: this.hw.servoMoves, code: this.code,
       codeChangedSinceStart: this.codeChanged, ranChangedCode: this.ranChanged,
+      runInStep: this.running && this.runEpoch === this.stepEpoch && norm(this.runCode) === norm(this.code),
     };
   }
 
@@ -695,6 +710,7 @@ export class Workspace {
     if (n > this.step && !this.doneSteps.has(this.step)) return; // prima si finisce il passo
     clearTimeout(this.advanceTimer);
     this.step = n;
+    this.stepEpoch++;
     this.persist();
     const m = steps[n].mode;
     if (m !== this.mode) this.setMode(m, false);
@@ -739,11 +755,25 @@ export class Workspace {
   private renderHint() {
     const h = this.q('.hint');
     let html = '';
-    if (this.running) html = `${img('light-bulb.svg', 30)}<span>Il robot è acceso! Tocca i pulsanti <b>A</b> e <b>B</b> sul micro:bit.</span>`;
+    if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
     h.innerHTML = html;
+    h.classList.toggle('hint-run', this.running);
+    for (const b of h.querySelectorAll<HTMLElement>('.mb-btn')) {
+      const name = b.dataset.btn as 'A' | 'B' | 'AB';
+      const press = (down: boolean) => {
+        this.rt.pressButton(name, down);
+        for (const mb of this.parts.filter(p => p.type === 'microbit')) for (const n of name === 'AB' ? ['A', 'B'] : [name]) this.scene.setButtonPressed(mb.id, n, down);
+        b.classList.toggle('down', down);
+      };
+      b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); press(true); });
+      b.addEventListener('pointerup', () => press(false));
+      b.addEventListener('pointercancel', () => press(false));
+      b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(true); press(false); } });
+    }
   }
 
   private finish() {
