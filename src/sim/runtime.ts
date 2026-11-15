@@ -6,6 +6,12 @@ export type PinName = 'P0' | 'P1' | 'P2';
 export const PINS: PinName[] = ['P0', 'P1', 'P2'];
 
 /** Collegamento tra il cervello simulato e il resto del mondo (circuito, scena 3D, audio). */
+/** La radio tra i micro:bit del banco (la crea il laboratorio). */
+export interface RadioBus {
+  send(from: MicrobitRuntime, packet: RadioPacket): void;
+}
+export interface RadioPacket { kind: 'number' | 'string' | 'value'; number?: number; text?: string; name?: string; group: number }
+
 export interface Bridge {
   display(leds: Uint8Array): void;
   digitalWrite(pin: string, value: number): void;
@@ -42,6 +48,8 @@ export interface RunStats {
   pins: Set<string>;
   shakes: number;
   clearsAfterLeds: number; // lucine spente dopo averle accese (luce notturna)
+  radioSent: number;
+  radioReceived: number;
   servoWrites: number;
   pinWrites: number;
   tones: number;
@@ -68,7 +76,7 @@ export class MicrobitRuntime {
   constructor(private bridge: Bridge) {}
 
   private newStats(): RunStats {
-    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), shakes: 0, clearsAfterLeds: 0, servoWrites: 0, pinWrites: 0, tones: 0 };
+    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), shakes: 0, clearsAfterLeds: 0, radioSent: 0, radioReceived: 0, servoWrites: 0, pinWrites: 0, tones: 0 };
   }
 
   // ---------- avvio e arresto ----------
@@ -163,7 +171,7 @@ export class MicrobitRuntime {
 
   // ---------- eventi dall'esterno (scena 3D, pannello sensori) ----------
 
-  private fire(key: string) {
+  private fire(key: string, ...args: any[]) {
     if (!this.running) return;
     const list = this.handlers.get(key);
     if (!list) return;
@@ -172,7 +180,7 @@ export class MicrobitRuntime {
       if (n >= 2) continue; // già in corso e uno in coda: come il micro:bit vero, non si accumulano
       this.busy.set(h, n + 1);
       this.spawn(async () => {
-        try { await h(); } finally { this.busy.set(h, Math.max(0, (this.busy.get(h) || 1) - 1)); }
+        try { await (h as any)(...args); } finally { this.busy.set(h, Math.max(0, (this.busy.get(h) || 1) - 1)); }
       });
     }
   }
@@ -207,6 +215,20 @@ export class MicrobitRuntime {
     if (down) { this.pinTouched.add(pin); this.stats.pins.add(pin); this.fire('pin:' + pin + ':pressed'); }
     else if (this.pinTouched.has(pin)) { this.pinTouched.delete(pin); this.fire('pin:' + pin); this.fire('pin:' + pin + ':released'); }
   }
+  // ---------- radio ----------
+  radioGroup = 0;
+  bus: RadioBus | null = null;
+  lastPacket = { SignalStrength: -128, Time: 0, SerialNumber: 0 };
+  /** Arriva un pacchetto dalla radio di un altro micro:bit (con la sua forza del segnale). */
+  receive(p: RadioPacket, strength: number) {
+    if (!this.running || p.group !== this.radioGroup) return;
+    this.lastPacket = { SignalStrength: Math.round(strength), Time: Date.now() - this.stats.started, SerialNumber: 0 };
+    this.stats.radioReceived++;
+    if (p.kind === 'number') this.fire('radio:number', p.number);
+    else if (p.kind === 'string') this.fire('radio:string', p.text);
+    else this.fire('radio:value', p.name, p.number);
+  }
+
   gesture(g: string) { if (g === 'Shake' && this.running) this.stats.shakes++; this.fire('gesture:' + g); }
   setSensor<K extends keyof Sensors>(k: K, v: Sensors[K]) {
     const before = this.sensors.sound;
@@ -522,7 +544,20 @@ export class MicrobitRuntime {
       convertToText: (v: any) => String(v),
       parseFloat, parseInt,
       basic, input, led, pins, music, servos, control, serial, images,
-      radio: unsupported(UNSUPPORTED_NS.radio), game: unsupported(UNSUPPORTED_NS.game), bluetooth: unsupported(UNSUPPORTED_NS.bluetooth),
+      radio: {
+        setGroup: (g: number) => { rt.radioGroup = Math.max(0, Math.min(255, Math.round(g))); },
+        sendNumber: (n: number) => { rt.stats.radioSent++; rt.bus?.send(rt, { kind: 'number', number: n, group: rt.radioGroup }); },
+        sendString: (t: string) => { rt.stats.radioSent++; rt.bus?.send(rt, { kind: 'string', text: String(t), group: rt.radioGroup }); },
+        sendValue: (name: string, n: number) => { rt.stats.radioSent++; rt.bus?.send(rt, { kind: 'value', name: String(name), number: n, group: rt.radioGroup }); },
+        onReceivedNumber: (fn: () => Promise<any>) => on('radio:number', fn),
+        onReceivedString: (fn: () => Promise<any>) => on('radio:string', fn),
+        onReceivedValue: (fn: () => Promise<any>) => on('radio:value', fn),
+        receivedPacket: (prop: string) => (rt.lastPacket as any)[prop] ?? 0,
+        receivedSignalStrength: () => rt.lastPacket.SignalStrength,
+        setTransmitPower: () => {}, setTransmitSerialNumber: () => {}, setFrequencyBand: () => {}, raiseEvent: () => {},
+      },
+      RadioPacketProperty: enumOf(['SignalStrength', 'Time', 'SerialNumber']),
+      game: unsupported(UNSUPPORTED_NS.game), bluetooth: unsupported(UNSUPPORTED_NS.bluetooth),
       datalogger: unsupported(UNSUPPORTED_NS.datalogger), power: unsupported(UNSUPPORTED_NS.power),
       randint,
       Button: enumOf(['A', 'B', 'AB']),

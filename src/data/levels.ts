@@ -18,7 +18,8 @@ export interface LevelCtx {
   runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
   icon: string;           // il disegno che il micro:bit mostra adesso ('' = spento)
   tested: Record<string, boolean>; // oggetti provati sul piano di prova: conduce sì/no
-  game: { touches: number; finished: boolean; played: boolean }; // gioco del filo
+  game: { touches: number; finished: boolean; played: boolean }; // gioco del filo / caccia al tesoro
+  friend: RunStats | null;  // il micro:bit dell'amico (radio)
 }
 
 /** Le pause nel codice (basic.pause(N)). */
@@ -57,6 +58,11 @@ export interface LessonDef {
 }
 
 const has = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type);
+const count = (c: LevelCtx, type: string) => c.parts.filter(p => p.type === type).length;
+/** Il gruppo della radio nel codice (radio.setGroup(N)). */
+const radioGroup = (code: string) => { const m = code.match(/radio\.setGroup\((\d+)\)/); return m ? Number(m[1]) : null; };
+/** La soglia della caccia al tesoro (SignalStrength) > N). */
+const huntLimit = (code: string) => { const m = code.match(/SignalStrength\)\s*>\s*(-?\d+)/); return m ? Number(m[1]) : null; };
 const powered = (c: LevelCtx) => c.analysis.powered.size > 0;
 const onHost = (c: LevelCtx, type: string, host: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === host);
 /** La soglia di buio della luce notturna (lightLevel() < N). */
@@ -478,6 +484,115 @@ input.onPinPressed(TouchPin.P2, function () {
     },
   },
   {
+    id: 'messaggi',
+    lesson: 3,
+    title: 'Messaggi segreti',
+    icon: 'gi:walkie-talkie',
+    intro: 'Due micro:bit si parlano con la radio, senza fili. Manda un messaggio al tuo amico!',
+    palette: ['microbit', 'battery'],
+    start: { parts: [], wires: [] },
+    code: `radio.setGroup(1)
+input.onButtonPressed(Button.A, function () {
+    radio.sendNumber(1)
+})
+input.onButtonPressed(Button.B, function () {
+    radio.sendNumber(2)
+})
+radio.onReceivedNumber(function (receivedNumber) {
+    if (receivedNumber == 1) {
+        basic.showIcon(IconNames.Happy)
+    } else {
+        basic.showIcon(IconNames.Heart)
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'radio', 'logic'],
+    dependencies: { core: '*', radio: '*' },
+    steps: [
+      { title: 'Il tuo micro:bit', mode: 'build', text: 'Trascina il micro:bit sul banco. Questo è il tuo.', goal: c => count(c, 'microbit') >= 1 },
+      { title: 'Il micro:bit dell\'amico', mode: 'build', text: 'Trascina un secondo micro:bit. Questo è quello del tuo amico.', goal: c => count(c, 'microbit') >= 2 },
+      { title: 'Le pile', mode: 'build', text: 'Ogni micro:bit ha le sue pile: trascinane due.', goal: c => count(c, 'battery') >= 2 },
+      {
+        title: 'Accendili tutti e due', mode: 'wire', text: 'Collega le pile a ogni micro:bit: spina bianca nella presa delle pile.',
+        goal: c => c.analysis.powered.size >= 2,
+        why: { q: 'Perché niente cavi tra i micro:bit?', a: 'Si parlano con la radio, come i walkie-talkie. Il messaggio vola nell\'aria!' },
+      },
+      {
+        title: 'Manda un messaggio', mode: 'code', text: 'Premi Prova! Poi premi A sul tuo micro:bit. Sul micro:bit dell\'amico arriva una faccina!',
+        goal: c => !!c.friend && c.friend.iconsShown.has('Happy'),
+        why: { q: 'Come fa ad arrivare?', a: 'Il tuo micro:bit manda il numero 1 con la radio. Quello dell\'amico lo riceve e mostra la faccina.' },
+      },
+      {
+        title: 'Rispondi', mode: 'code', text: 'Ora premi B sul micro:bit dell\'amico (i pulsanti viola). Sul tuo arriva un cuore!',
+        goal: c => !!c.friend && c.friend.radioSent > 0 && !!c.stats && c.stats.iconsShown.has('Heart'),
+      },
+      {
+        title: 'Il canale segreto', mode: 'code', text: 'Nel blocco "radio imposta gruppo" metti il vostro numero segreto, per esempio 7. Poi premi Prova! e manda un messaggio.',
+        goal: c => c.runInStep && radioGroup(c.code) !== null && radioGroup(c.code) !== 1 && !!c.friend && (c.friend.radioReceived > 0 || (!!c.stats && c.stats.radioReceived > 0)),
+        why: { q: 'Perché è segreto?', a: 'Il gruppo è come un canale. Solo i micro:bit con lo stesso numero si sentono. Chi ha un altro numero non riceve niente!' },
+      },
+    ],
+    real: {
+      materials: ['due micro:bit V2, uno a testa', 'due portapile con 2 pile AAA', 'il cavo USB per caricare lo stesso codice su tutti e due', 'un amico!'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Carica lo stesso codice su tutti e due i micro:bit.'], ['solo', 'Scegliete un numero segreto diverso da quello degli altri gruppi.']],
+    },
+  },
+  {
+    id: 'tesoro',
+    lesson: 3,
+    title: 'Caccia al tesoro',
+    icon: 'gi:open-treasure-chest',
+    intro: 'Un micro:bit è il tesoro e manda segnali radio. Con l\'altro lo cerchi: più sei vicino, più il segnale è forte!',
+    palette: ['microbit', 'battery'],
+    start: { parts: [], wires: [] },
+    code: `let tesoro = false
+radio.setGroup(1)
+input.onButtonPressed(Button.A, function () {
+    tesoro = true
+    basic.showIcon(IconNames.Diamond)
+})
+radio.onReceivedNumber(function (receivedNumber) {
+    if (radio.receivedPacket(RadioPacketProperty.SignalStrength) > -60) {
+        basic.showIcon(IconNames.Heart)
+    } else {
+        basic.showIcon(IconNames.SmallHeart)
+    }
+})
+basic.forever(function () {
+    if (tesoro) {
+        radio.sendNumber(0)
+    }
+    basic.pause(200)
+})
+`,
+    namespaces: ['basic', 'input', 'radio', 'logic', 'variables'],
+    dependencies: { core: '*', radio: '*' },
+    steps: [
+      { title: 'Il cercatore', mode: 'build', text: 'Trascina il micro:bit sul banco. Con questo cerchi il tesoro.', goal: c => count(c, 'microbit') >= 1 },
+      { title: 'Il tesoro', mode: 'build', text: 'Trascina un secondo micro:bit: sarà il tesoro da nascondere.', goal: c => count(c, 'microbit') >= 2 },
+      { title: 'Le pile', mode: 'build', text: 'Ogni micro:bit ha le sue pile: trascinane due.', goal: c => count(c, 'battery') >= 2 },
+      { title: 'Accendili tutti e due', mode: 'wire', text: 'Collega le pile a ogni micro:bit.', goal: c => c.analysis.powered.size >= 2 },
+      {
+        title: 'Accendi il tesoro', mode: 'code', text: 'Premi Prova! Poi premi A sul secondo micro:bit (pulsanti viola): mostra un rombo e comincia a mandare segnali.',
+        goal: c => c.running && ((!!c.friend && c.friend.iconsShown.has('Diamond')) || (!!c.stats && c.stats.iconsShown.has('Diamond'))),
+        why: { q: 'Cosa fa il tesoro?', a: 'Per sempre, 5 volte al secondo, manda un segnale con la radio. Come un faro che fa "sono qui, sono qui!"' },
+      },
+      {
+        title: 'Cerca il tesoro', mode: 'code', text: 'Premi "Cerca il tesoro". Trascina il tuo micro:bit in giardino: cuore piccolo = lontano, cuore grande = vicino!',
+        goal: c => c.running && c.game.finished,
+        why: { q: 'Come fa a sapere quanto è lontano?', a: 'Più sei vicino al tesoro, più il segnale arriva forte. Il micro:bit misura la forza: se è più di -60, sei vicino e mostra il cuore grande.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Rendi la caccia più difficile: cambia -60 con -50. Così il cuore grande arriva solo quando sei vicinissimo. Poi premi Prova! e cerca ancora.',
+        goal: c => c.runInStep && huntLimit(c.code) !== null && huntLimit(c.code) !== -60 && c.game.finished,
+      },
+    ],
+    real: {
+      materials: ['due micro:bit V2', 'due portapile con 2 pile AAA', 'il cavo USB per caricare lo stesso codice su tutti e due', 'un posto grande per nascondere il tesoro (aula, corridoio, giardino)'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['adulto', 'L\'adulto sceglie dove nascondere il tesoro: niente posti alti o pericolosi.'], ['solo', 'Cammina mentre cerchi, non correre.']],
+    },
+  },
+  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -595,7 +710,7 @@ basic.forever(function () {
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!', level: 'filo' }, { icon: 'gi:banana', title: 'Il piano di frutta', level: 'frutta' }] },
-  { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
+  { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti', level: 'messaggi' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro', level: 'tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },
   { n: 6, title: 'Il robot intelligente', projects: [{ icon: 'gi:radar-sweep', title: 'Il robot che evita i muri' }, { icon: 'gi:podium-winner', title: 'La grande Expo' }] },

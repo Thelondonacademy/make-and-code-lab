@@ -14,7 +14,7 @@ export interface SceneCallbacks {
   onTerminal(ref: string): void;
   onWireEnd(wireId: string, end: 'a' | 'b', newRef: string | null): void;
   onContext(kind: 'part' | 'wire' | 'none', id: string | null, clientX: number, clientY: number): void;
-  onButton(name: 'A' | 'B', down: boolean): void;
+  onButton(name: 'A' | 'B', down: boolean, mbId?: string): void;
   onLogo(down: boolean): void;
   onPad(pin: string, down: boolean): void;
   onFoil(partId: string, down: boolean): void;
@@ -53,7 +53,7 @@ export class Scene3D {
   private tempWire: THREE.Mesh | null = null;
   private down: { x: number; y: number } | null = null;
   private rightDown: { x: number; y: number } | null = null;
-  private pressed: { kind: 'button' | 'logo' | 'pad' | 'foil'; name: string } | null = null;
+  private pressed: { kind: 'button' | 'logo' | 'pad' | 'foil'; name: string; mb?: string } | null = null;
   private clock = new THREE.Timer();
   private raf = 0;
   private disposed = false;
@@ -596,7 +596,7 @@ export class Scene3D {
     const hits = this.hit(e, this.partObjects());
     if (this.running) {
       const h = hits[0]?.object;
-      if (h?.userData.button) { this.pressed = { kind: 'button', name: h.userData.button }; this.cb.onButton(h.userData.button, true); this.controls.enabled = false; return; }
+      if (h?.userData.button) { this.pressed = { kind: 'button', name: h.userData.button, mb: h.userData.partId }; this.cb.onButton(h.userData.button, true, h.userData.partId); this.controls.enabled = false; return; }
       if (h?.userData.logo) { this.pressed = { kind: 'logo', name: 'logo' }; this.cb.onLogo(true); this.controls.enabled = false; return; }
       if (h?.userData.pad && ['P0', 'P1', 'P2'].includes(h.userData.pad)) { this.pressed = { kind: 'pad', name: h.userData.pad }; this.cb.onPad(h.userData.pad, true); this.controls.enabled = false; return; }
       const fid = h?.userData.partId as string | undefined;
@@ -722,7 +722,7 @@ export class Scene3D {
     if (this.pressed) {
       const p = this.pressed;
       this.pressed = null;
-      if (p.kind === 'button') this.cb.onButton(p.name as 'A' | 'B', false);
+      if (p.kind === 'button') this.cb.onButton(p.name as 'A' | 'B', false, p.mb);
       if (p.kind === 'logo') this.cb.onLogo(false);
       if (p.kind === 'pad') this.cb.onPad(p.name, false);
       if (p.kind === 'foil') this.cb.onFoil(p.name, false);

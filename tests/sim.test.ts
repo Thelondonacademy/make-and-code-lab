@@ -92,12 +92,12 @@ basic.forever(function () { n += 1; pins.digitalWritePin(DigitalPin.P1, n % 2); 
     await wait(20);
     expect(f.errors).toEqual([]);
   });
-  it('blocco radio: messaggio gentile', async () => {
+  it('blocco non ancora disponibile: messaggio gentile', async () => {
     const f = fakeBridge();
     const rt = new MicrobitRuntime(f.b);
-    rt.start(`radio.sendNumber(1)`);
+    rt.start(`bluetooth.startUartService()`);
     await wait(30);
-    expect(f.errors[0]).toMatch(/radio/i);
+    expect(f.errors[0]).toMatch(/Bluetooth/i);
   });
   it('blocco sconosciuto', async () => {
     const f = fakeBridge();
@@ -430,4 +430,43 @@ describe('Il piano di frutta', () => {
     rt.stop();
     expect(f.errors).toEqual([]);
   }, 10000);
+});
+
+describe('radio', () => {
+  function pair() {
+    const a = fakeBridge(), b = fakeBridge();
+    const ra = new MicrobitRuntime(a.b), rb = new MicrobitRuntime(b.b);
+    const all = [ra, rb];
+    const bus = { send: (from: MicrobitRuntime, p: any) => { for (const r of all) if (r !== from) setTimeout(() => r.receive(p, -50), 5); } };
+    ra.bus = bus; rb.bus = bus;
+    return { a, b, ra, rb };
+  }
+  it('un numero arriva solo a chi ha lo stesso gruppo', async () => {
+    const { ra, rb } = pair();
+    const code = `radio.setGroup(1)
+input.onButtonPressed(Button.A, function () { radio.sendNumber(1) })
+radio.onReceivedNumber(function (receivedNumber) { if (receivedNumber == 1) { basic.showIcon(IconNames.Happy) } })`;
+    ra.start(code); rb.start(code);
+    await wait(30);
+    ra.pressButton('A', true); ra.pressButton('A', false);
+    await wait(60);
+    expect(rb.stats.iconsShown.has('Happy')).toBe(true);
+    expect(ra.stats.iconsShown.has('Happy')).toBe(false);
+    rb.start(code.replace('setGroup(1)', 'setGroup(7)'));
+    await wait(30);
+    ra.pressButton('A', true); ra.pressButton('A', false);
+    await wait(60);
+    expect(rb.stats.iconsShown.has('Happy')).toBe(false);
+    ra.stop(); rb.stop();
+  });
+  it('forza del segnale nel pacchetto', async () => {
+    const { ra, rb } = pair();
+    rb.start(`radio.setGroup(1)
+radio.onReceivedNumber(function (receivedNumber) { basic.showNumber(radio.receivedPacket(RadioPacketProperty.SignalStrength)) })`);
+    ra.start(`radio.setGroup(1)
+radio.sendNumber(0)`);
+    await wait(80);
+    expect(rb.stats.textsShown).toContain('-50');
+    ra.stop(); rb.stop();
+  });
 });

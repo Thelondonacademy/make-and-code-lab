@@ -2,7 +2,7 @@
 import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER, mountsOf } from '../data/parts';
 import type { Level, Mode, LevelCtx } from '../data/levels';
 import { analyze, canConnect, Issue, PartInst, Wire, Analysis, PIN_PADS } from '../sim/circuit';
-import { MicrobitRuntime } from '../sim/runtime';
+import { MicrobitRuntime, RadioBus, Bridge } from '../sim/runtime';
 import { Hardware } from '../sim/hardware';
 import { Scene3D } from '../scene/scene3d';
 import { CodeEditor } from '../makecode/editor';
@@ -11,6 +11,7 @@ import { icon } from './icons';
 import { el, esc, header, img, modal, safetyTag, toast } from './common';
 import { openCard } from './card';
 import { BuzzGame } from './buzzgame';
+import { HuntGame } from './huntgame';
 import { speak, canSpeak, stopSpeaking } from '../speech';
 import { tone, cheer } from '../audio';
 import { loadWork, saveWork, clearWork, saveStars, loadProgress } from '../store';
@@ -86,6 +87,7 @@ export class Workspace {
       issue: i => { if (!this.runtimeIssues.some(x => x.id === i.id)) { this.runtimeIssues.push(i); this.issueIdx = 0; this.renderIssues(); } },
     });
     this.rt = new MicrobitRuntime(this.hw);
+    this.rt.bus = this.bus;
     this.root = this.render();
     host.replaceChildren(this.root);
     this.editor = new CodeEditor(this.root.querySelector('.mk-host')!);
@@ -101,6 +103,8 @@ export class Workspace {
   dispose() {
     window.removeEventListener('keydown', this.onKey);
     this.closeBuzz();
+    this.hunt?.close();
+    this.stopFriends();
     this.rt.stop();
     stopSpeaking();
     clearTimeout(this.advanceTimer);
@@ -262,7 +266,12 @@ export class Workspace {
       onTerminal: ref => { if (this.selIds.length || this.selWire) this.scene.setSelection([], null); this.clickTerminal(ref); },
       onWireEnd: (id, end, ref) => this.moveWireEnd(id, end, ref),
       onContext: (kind, id, x, y) => this.openCtx(kind, id, x, y),
-      onButton: (b, down) => { this.rt.pressButton(b, down); for (const mb of this.parts.filter(p => p.type === 'microbit')) this.scene.setButtonPressed(mb.id, b, down); },
+      onButton: (b, down, mbId) => {
+        const fr = mbId ? this.friends.get(mbId) : undefined;
+        (fr ?? this.rt).pressButton(b, down);
+        const ids = fr || (mbId && this.friends.size) ? [mbId!] : this.parts.filter(p => p.type === 'microbit' && !this.friends.has(p.id)).map(p => p.id);
+        for (const id of ids) this.scene.setButtonPressed(id, b, down);
+      },
       onLogo: down => this.rt.touchLogo(down),
       onPad: (pin, down) => this.rt.touchPin(pin, down),
       onFoil: (id, down) => this.touchFoil(id, down),
@@ -420,7 +429,8 @@ export class Workspace {
     const def = PARTS[type];
     if (!def || def.tool) { openCard(type); return; }
     if (this.running && !mountsOf(type).includes('testPad')) { toast('Prima ferma la prova, poi aggiungi i pezzi.'); return; }
-    if (type === 'microbit' && this.parts.some(p => p.type === 'microbit')) { toast('Il micro:bit c\'è già: per questi progetti ne basta uno.'); return; }
+    const maxMb = /radio\./.test(this.code) || this.level.id === 'libero' ? 2 : 1;
+    if (type === 'microbit' && this.parts.filter(p => p.type === 'microbit').length >= maxMb) { toast(maxMb === 1 ? 'Il micro:bit c\'è già: per questi progetti ne basta uno.' : 'Ci sono già due micro:bit: il tuo e quello dell\'amico.'); return; }
     this.pushUndo();
     const pos = x === undefined ? this.freeSpot(type) : { x, z: z! };
     const id = newId(type);
@@ -628,6 +638,7 @@ export class Workspace {
     const k = e.key.toLowerCase();
     if (k === 'escape') {
       if (this.buzz?.root.isConnected) { this.closeBuzz(); return; }
+      if (this.hunt?.isOpen()) { this.hunt.close(); return; }
       if (!this.q('.step-pop').hidden) { this.closeStepPop(); return; }
       this.hideCtx(); this.pending = null; this.scene.setPending(null); this.renderHint(); this.scene.setSelection([], null); return;
     }
@@ -777,6 +788,8 @@ export class Workspace {
     this.hw.reset();
     const err = this.rt.start(this.code);
     if (err) return;
+    this.game.finished = false; // ogni prova nuova: il gioco (filo, tesoro) si rifà da capo
+    this.startFriends();
     if (this.codeChanged) this.ranChanged = true;
     this.runEpoch = this.stepEpoch;
     this.runCode = this.code;
@@ -787,6 +800,74 @@ export class Workspace {
   stopRun() {
     this.rt.stop();
     this.setRunning(false);
+  }
+
+  // ---------- radio: il micro:bit dell'amico ----------
+  friends = new Map<string, MicrobitRuntime>();
+  hunt: HuntGame | null = null;
+  /** Forza del segnale tra due micro:bit: nel gioco della caccia dalla mappa, altrimenti dalla distanza sul banco. */
+  private signal(from: string, to: string): number {
+    if (this.hunt?.isOpen()) return this.hunt.strength(from, to);
+    const a = this.parts.find(p => p.id === from), b = this.parts.find(p => p.id === to);
+    if (!a || !b) return -128;
+    const pos = (p: PartInst) => { const h = p.attachedTo ? this.parts.find(x => x.id === p.attachedTo) : null; return h ? h : p; };
+    const d = Math.hypot(pos(a).x - pos(b).x, pos(a).z - pos(b).z);
+    return d > 60 ? -128 : -42 - 53 * Math.max(0, Math.min(1, (d - 4) / 56));
+  }
+  private rtId(r: MicrobitRuntime) { return r === this.rt ? this.hw.mbId : [...this.friends].find(([, x]) => x === r)?.[0] ?? null; }
+  bus: RadioBus = {
+    send: (from, p) => {
+      const fromId = this.rtId(from);
+      if (!fromId) return;
+      const all: [string, MicrobitRuntime][] = [...(this.hw.mbId ? [[this.hw.mbId, this.rt] as [string, MicrobitRuntime]] : []), ...this.friends];
+      for (const [id, r] of all) {
+        if (r === from) continue;
+        const s = this.signal(fromId, id);
+        if (s < -95) continue; // troppo lontano: non arriva
+        setTimeout(() => r.receive(p, s), 8);
+      }
+    },
+  };
+  /** Gli altri micro:bit accesi fanno girare lo stesso programma (come quando l'amico carica il tuo codice). */
+  private startFriends() {
+    this.stopFriends();
+    if (!/radio\./.test(this.code)) return;
+    for (const mb of this.parts.filter(p => p.type === 'microbit' && p.id !== this.hw.mbId && this.analysis.powered.has(p.id))) {
+      const id = mb.id;
+      const br: Bridge = {
+        display: l => this.scene.setDisplay(id, l),
+        digitalWrite: () => {}, analogWrite: () => {}, servoWrite: () => {},
+        digitalRead: () => 0, analogRead: () => 0,
+        tone: (f, ms) => tone(f, ms), log: () => {},
+        error: m => toast(`${icon('ph:warning-fill', 20)}Il micro:bit dell'amico: ${esc(m)}`, { kind: 'warn' }),
+      };
+      const r = new MicrobitRuntime(br);
+      r.bus = this.bus;
+      if (r.start(this.code) === null) this.friends.set(id, r);
+    }
+  }
+  /** Caccia al tesoro: il tesoro è il micro:bit che mostra il rombo, il cercatore è l'altro. */
+  openHunt() {
+    if (!this.running) return;
+    const all: [string, MicrobitRuntime][] = [...(this.hw.mbId ? [[this.hw.mbId, this.rt] as [string, MicrobitRuntime]] : []), ...this.friends];
+    const t = all.find(([, r]) => r.stats.iconsShown.has('Diamond'));
+    const sk = all.find(([id]) => id !== t?.[0]);
+    if (!t || !sk) { toast(`${icon('ph:info-fill', 20)}Prima premi A sul micro:bit che fa da tesoro: mostra il rombo.`, { kind: 'warn', ms: 4000 }); return; }
+    const seeker = sk[1];
+    this.hunt?.close();
+    this.hunt = new HuntGame(t[0], sk[0], {
+      seekerLeds: () => seeker.leds,
+      seekerIcon: () => seeker.lastIcon,
+      onFinish: () => { this.game.finished = true; toast(`${img('trophy.svg', 26)}Tesoro trovato! Il segnale radio ti ha portato fin lì.`, { kind: 'ok', ms: 3500 }); this.evaluate(); },
+    });
+    this.game.played = true;
+    this.game.finished = false;
+    this.hunt.show(document.body);
+  }
+
+  private stopFriends() {
+    for (const [id, r] of this.friends) { r.stop(); this.scene?.setDisplay(id, new Uint8Array(25)); }
+    this.friends.clear();
   }
 
   // ---------- gioco del filo ----------
@@ -868,7 +949,7 @@ export class Workspace {
   private setRunning(r: boolean) {
     if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); }
     this.running = r;
-    if (!r) this.closeBuzz();
+    if (!r) { this.closeBuzz(); this.hunt?.close(); this.stopFriends(); }
     this.padTouch.clear();
     if (r) queueMicrotask(() => this.updateTouches());
     this.root.classList.toggle('running', r);
@@ -959,6 +1040,7 @@ export class Workspace {
       codeChangedSinceStart: this.codeChanged, ranChangedCode: this.ranChanged,
       runInStep: this.running && this.runEpoch === this.stepEpoch && norm(this.runCode) === norm(this.code),
       icon: this.running ? this.rt.lastIcon : '', tested: this.tested, game: this.game,
+      friend: this.running ? [...this.friends.values()][0]?.stats ?? null : null,
     };
   }
 
@@ -1125,8 +1207,8 @@ export class Workspace {
   private renderHint() {
     const h = this.q('.hint');
     let html = '';
-    if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+    if (this.running) html = `<span class="mb-label">${this.friends.size ? 'Il tuo micro:bit' : 'Pulsanti del micro:bit'}</span>
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.friends.size ? `<span class="mb-label">Il micro:bit dell'amico</span><button class="mb-btn mb-friend" data-fbtn="A" aria-label="Pulsante A dell'amico">A</button><button class="mb-btn mb-friend" data-fbtn="B" aria-label="Pulsante B dell'amico">B</button>` : ''}${/RadioPacketProperty\.SignalStrength/.test(this.code) && this.friends.size ? `<button class="mb-btn mb-pet mb-hunt" aria-label="Gioca alla caccia al tesoro">${img('compass.svg', 26)}Cerca il tesoro</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
@@ -1158,11 +1240,21 @@ export class Workspace {
       pet.addEventListener('pointercancel', () => this.touchFoil(fid, false));
       pet.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.touchFoil(fid, true); setTimeout(() => this.touchFoil(fid, false), 1200); } });
     }
-    for (const b of h.querySelectorAll<HTMLElement>('.mb-btn:not(.mb-pet)')) {
+    h.querySelector<HTMLElement>('.mb-hunt')?.addEventListener('click', () => this.openHunt());
+    for (const fbtn of h.querySelectorAll<HTMLElement>('.mb-friend')) {
+      const name = fbtn.dataset.fbtn as 'A' | 'B';
+      const fid = [...this.friends.keys()][0];
+      const press = (d: boolean) => { this.friends.get(fid)?.pressButton(name, d); this.scene.setButtonPressed(fid, name, d); fbtn.classList.toggle('down', d); };
+      fbtn.addEventListener('pointerdown', e => { e.preventDefault(); fbtn.setPointerCapture(e.pointerId); press(true); });
+      fbtn.addEventListener('pointerup', () => press(false));
+      fbtn.addEventListener('pointercancel', () => press(false));
+      fbtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); press(true); press(false); } });
+    }
+    for (const b of h.querySelectorAll<HTMLElement>('.mb-btn:not(.mb-pet):not(.mb-friend)')) {
       const name = b.dataset.btn as 'A' | 'B' | 'AB';
       const press = (down: boolean) => {
         this.rt.pressButton(name, down);
-        for (const mb of this.parts.filter(p => p.type === 'microbit')) for (const n of name === 'AB' ? ['A', 'B'] : [name]) this.scene.setButtonPressed(mb.id, n, down);
+        for (const mb of this.parts.filter(p => p.type === 'microbit' && !this.friends.has(p.id))) for (const n of name === 'AB' ? ['A', 'B'] : [name]) this.scene.setButtonPressed(mb.id, n, down);
         b.classList.toggle('down', down);
       };
       b.addEventListener('pointerdown', e => { e.preventDefault(); b.setPointerCapture(e.pointerId); press(true); });
@@ -1237,6 +1329,12 @@ export class Workspace {
       room: () => this.toggleRoom(),
       buzz: () => this.openBuzz(),
       fruit: (id: string, d: boolean) => this.touchFoil(id, d),
+      friendPress: (b: 'A' | 'B') => { const r = [...this.friends.values()][0]; r?.pressButton(b, true); r?.pressButton(b, false); },
+      friendState: () => { const [id, r] = [...this.friends][0] ?? []; return r ? { id, leds: Array.from(r.leds).map(v => (v ? 1 : 0)).join(''), icons: [...r.stats.iconsShown] } : null; },
+      hunt: () => this.openHunt(),
+      huntState: () => this.hunt?.testState() ?? null,
+      huntMove: (x: number, y: number) => this.hunt?.testMove(x, y),
+      huntClose: () => this.hunt?.close(),
       buzzPath: () => this.buzz?.clientPath() ?? [],
       buzzClose: () => this.closeBuzz(),
       mode: (m: Mode) => this.setMode(m),
