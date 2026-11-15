@@ -12,6 +12,7 @@ export interface SceneCallbacks {
   onMove(moves: { id: string; x: number; z: number }[], attachTo: string | null): void;
   onSelect(ids: string[], wire: string | null, additive: boolean): void;
   onTerminal(ref: string): void;
+  onChoose(refs: string[], clientX: number, clientY: number): void;
   onWireEnd(wireId: string, end: 'a' | 'b', newRef: string | null): void;
   onContext(kind: 'part' | 'wire' | 'none', id: string | null, clientX: number, clientY: number): void;
   onButton(name: 'A' | 'B', down: boolean, mbId?: string): void;
@@ -79,7 +80,13 @@ export class Scene3D {
     this.controls.minDistance = 10;
     this.controls.maxDistance = 140;
     this.controls.maxPolarAngle = 1.38;
-    this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    // A prova di bambino: un dito (o il tasto sinistro) sul banco vuoto sposta la vista, non la gira.
+    // Per girarla servono due dita, il tasto destro o il pulsante tondo.
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
+    this.controls.screenSpacePanning = false; // si scorre lungo il banco, non in aria
+    this.controls.addEventListener('start', () => { this.fly = null; });
+    this.controls.addEventListener('change', () => this.keepOnTable());
 
     this.scene.background = new THREE.Color(0xf5f0ea);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0xe6ddd2, 1.6);
@@ -160,6 +167,12 @@ export class Scene3D {
       const k = (performance.now() - t0) / 350;
       if (!o || k >= 1) { this.bumps.delete(id); if (o) o.built.group.position.y = o.inst.attachedTo ? o.built.group.position.y : (o.inst.y ?? 0); continue; }
       o.built.group.position.y = (o.inst.y ?? 0) + Math.sin(k * Math.PI) * 1.6;
+    }
+    if (this.fly) {
+      const f = this.fly, k = Math.min(1, (performance.now() - f.t0) / f.dur), e = k * k * (3 - 2 * k);
+      this.controls.target.lerpVectors(f.t1, f.t2, e);
+      this.camera.position.lerpVectors(f.p1, f.p2, e);
+      if (k >= 1) this.fly = null;
     }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
@@ -423,7 +436,7 @@ export class Scene3D {
   }
 
   /** Posizione sullo schermo (px, dentro il riquadro) sopra il primo pezzo o il cavo selezionato. */
-  selectionAnchor(): { x: number; y: number } | null {
+  selectionAnchor(): { x: number; y: number; below?: number } | null {
     const r = this.renderer.domElement.getBoundingClientRect();
     let v: THREE.Vector3 | null = null;
     if (this.selWire) {
@@ -436,9 +449,15 @@ export class Scene3D {
       if (!box.isEmpty()) v = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 1, (box.min.z + box.max.z) / 2);
     }
     if (!v) return null;
+    let low: THREE.Vector3 | null = null;
+    if (!this.selWire) {
+      const box = new THREE.Box3();
+      for (const id of this.selected) { const o = this.objs.get(id); if (o) box.union(this.ownBox(o.built.group)); }
+      low = new THREE.Vector3((box.min.x + box.max.x) / 2, Math.max(0, box.min.y), box.max.z).project(this.camera);
+    }
     v.project(this.camera);
     if (v.z > 1) return null;
-    return { x: ((v.x + 1) / 2) * r.width, y: ((1 - v.y) / 2) * r.height };
+    return { x: ((v.x + 1) / 2) * r.width, y: ((1 - v.y) / 2) * r.height, below: low ? ((1 - low.y) / 2) * r.height : undefined };
   }
 
   termWorld(ref: string): THREE.Vector3 | null {
@@ -596,6 +615,24 @@ export class Scene3D {
     return best;
   }
 
+  /** Tutti i morsetti vicini al dito, dal più vicino: se sono più di uno e alla pari, chiediamo al bambino quale voleva. */
+  nearTerminals(clientX: number, clientY: number, maxPx: number): { ref: string; d: number }[] {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const out: { ref: string; d: number }[] = [];
+    for (const o of this.objs.values()) for (const t of PARTS[o.inst.type].terminals) {
+      const ref = `${o.inst.id}:${t.id}`;
+      const p = this.termWorld(ref);
+      if (!p) continue;
+      p.project(this.camera);
+      const d = Math.hypot(r.left + ((p.x + 1) / 2) * r.width - clientX, r.top + ((1 - p.y) / 2) * r.height - clientY);
+      if (d < maxPx) out.push({ ref, d });
+    }
+    return out.sort((a, b) => a.d - b.d);
+  }
+
+  /** Dove si vede sullo schermo un punto del banco. */
+  tableClient(x: number, z: number) { return this.toClient(new THREE.Vector3(x, 0, z)); }
+
   private toClient(v: THREE.Vector3) {
     const r = this.renderer.domElement.getBoundingClientRect();
     const p = v.clone().project(this.camera);
@@ -672,8 +709,17 @@ export class Scene3D {
     }
     // in Collega conta il cerchietto più vicino: toccarlo inizia un cavo, trascinarlo sposta la pinza che c'è sopra
     const tubeHit = this.hit(e, [this.wireGroup])[0];
-    if (this.mode === 'wire' && !(tubeHit && !tubeHit.object.userData.wireEnd)) {
-      const ref = this.nearestTerminal(e.clientX, e.clientY);
+    const coarse = e.pointerType === 'touch' || e.pointerType === 'pen';
+    // un cavo che passa sopra un cerchietto non deve "rubare" il tocco: vicino a un cerchietto vince il cerchietto
+    const onTube = !!tubeHit && !tubeHit.object.userData.wireEnd && !this.nearTerminals(e.clientX, e.clientY, coarse ? 26 : 12).length;
+    if (this.mode === 'wire' && !onTube) {
+      if (coarse) {
+        // con il dito non si è precisi: se due o tre cerchietti sono quasi alla stessa distanza, si sceglie da un fumetto con i pulsanti grandi
+        const near = this.nearTerminals(e.clientX, e.clientY, 44);
+        const tie = near.filter(n => n.d - near[0].d < 10 && n.d < 40).slice(0, 3);
+        if (tie.length > 1) { this.controls.enabled = false; this.cb.onChoose(tie.map(n => n.ref), e.clientX, e.clientY); return; }
+      }
+      const ref = this.nearestTerminal(e.clientX, e.clientY, coarse ? 40 : 30);
       if (ref) {
         this.controls.enabled = false;
         const w = [...this.wires].reverse().find(x => x.a === ref || x.b === ref);
@@ -899,25 +945,48 @@ export class Scene3D {
 
   // ---------- vista ----------
 
-  fit(parts: PartInst[]) {
+  private fly: { t1: THREE.Vector3; t2: THREE.Vector3; p1: THREE.Vector3; p2: THREE.Vector3; t0: number; dur: number } | null = null;
+  /** La vista scivola fino al punto nuovo, senza salti (i salti fanno perdere l'orientamento). */
+  private flyTo(target: THREE.Vector3, pos: THREE.Vector3, smooth: boolean) {
+    if (!smooth || this.reducedMotion) { this.fly = null; this.controls.target.copy(target); this.camera.position.copy(pos); return; }
+    this.fly = { t1: this.controls.target.clone(), t2: target, p1: this.camera.position.clone(), p2: pos, t0: performance.now(), dur: 320 };
+  }
+  private reducedMotion = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  get moving() { return !!this.fly; }
+
+  /** Il punto che guardi resta sempre sopra il banco: così non ci si perde. */
+  private keepOnTable() {
+    const t = this.controls.target;
+    const x = clamp(t.x, -TABLE.w / 2, TABLE.w / 2), z = clamp(t.z, -TABLE.d / 2, TABLE.d / 2);
+    if (x === t.x && z === t.z) return;
+    this.camera.position.x += x - t.x; this.camera.position.z += z - t.z;
+    t.x = x; t.z = z;
+  }
+
+  /** Inquadra i pezzi. `tight`: più da vicino (per collegare i cavi). I bordi coperti dai pulsanti non contano. */
+  fit(parts: PartInst[], opts: { smooth?: boolean; tight?: boolean; pad?: { x: number; y: number } } = {}) {
     const box = new THREE.Box3();
     for (const p of parts) { const o = this.objs.get(p.id); if (o && !p.attachedTo) box.expandByObject(o.built.group); }
-    if (box.isEmpty()) { this.homeView(); return; }
-    box.expandByScalar(2.5);
+    if (box.isEmpty()) { this.homeView(opts.smooth); return; }
+    box.expandByScalar(opts.tight ? 1.2 : 2.5);
     const c = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
+    const r = this.renderer.domElement.getBoundingClientRect();
+    // ai lati ci sono i pulsanti della vista e i colori dei cavi; in alto il suggerimento
+    const pad = opts.pad ?? { x: 128, y: 96 };
+    const kx = r.width > 0 ? r.width / Math.max(r.width * 0.5, r.width - pad.x) : 1, ky = r.height > 0 ? r.height / Math.max(r.height * 0.5, r.height - pad.y) : 1;
     const vFov = (this.camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
-    const needW = (Math.max(size.x, 14) / 2) / Math.tan(hFov / 2);
+    const needW = (Math.max(size.x, opts.tight ? 10 : 14) / 2) / Math.tan(hFov / 2) * kx;
     // i pezzi alti (il mostro del latte con il servo sul tappo) vanno guardati un po' più da lontano e più in alto
     const tall = size.y > 18;
-    const needD = (Math.max(size.z, 10) / 2 + size.y * (tall ? 0.75 : 0.4)) / Math.tan(vFov / 2);
+    const needD = (Math.max(size.z, opts.tight ? 7 : 10) / 2 + size.y * (tall ? 0.75 : 0.4)) / Math.tan(vFov / 2) * ky;
     const dist = clamp(Math.max(needW, needD) * 1.05, this.controls.minDistance, this.controls.maxDistance);
     const ty = tall ? size.y * 0.3 : 0;
-    this.controls.target.set(c.x, ty, c.z);
-    this.camera.position.set(c.x, ty + dist * 0.76, c.z + dist * 0.65);
+    this.flyTo(new THREE.Vector3(c.x, ty, c.z), new THREE.Vector3(c.x, ty + dist * 0.76, c.z + dist * 0.65), !!opts.smooth);
   }
   zoom(f: number) {
+    this.fly = null;
     const dir = this.camera.position.clone().sub(this.controls.target);
     const len = clamp(dir.length() * f, this.controls.minDistance, this.controls.maxDistance);
     this.camera.position.copy(this.controls.target).add(dir.setLength(len));
@@ -925,15 +994,13 @@ export class Scene3D {
   rotateView() {
     const dir = this.camera.position.clone().sub(this.controls.target);
     dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
-    this.camera.position.copy(this.controls.target).add(dir);
+    this.flyTo(this.controls.target.clone(), this.controls.target.clone().add(dir), true);
   }
-  homeView() {
-    this.camera.position.copy(HOME_CAM);
-    this.controls.target.set(0, 0, 1);
+  homeView(smooth = false) {
+    this.flyTo(new THREE.Vector3(0, 0, 1), HOME_CAM.clone(), smooth);
   }
   focusOn(x: number, z: number, dist = 22) {
-    this.controls.target.set(x, 0, z);
-    this.camera.position.set(x, dist * 0.78, z + dist * 0.7);
+    this.flyTo(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, dist * 0.78, z + dist * 0.7), true);
   }
 }
 

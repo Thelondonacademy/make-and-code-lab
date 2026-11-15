@@ -143,10 +143,11 @@ export class Workspace {
             <div class="wire-colors" hidden><span>Colore del cavo</span></div>
             <div class="tip" hidden></div>
             <div class="sel-tools" hidden></div>
+            <div class="term-choose" hidden role="dialog" aria-label="Quale volevi toccare?"></div>
             <div class="ctx-menu" role="menu" hidden></div>
             <div class="view-btns">
               <button class="round" data-act="undo" aria-label="Annulla l'ultima mossa">${icon('ph:arrow-counter-clockwise-bold', 26)}</button>
-              <button class="round" data-act="fit" aria-label="Guarda tutto il banco">${icon('ph:cube-fill', 26)}</button>
+              <button class="round round-home" data-act="fit" aria-label="Torna a vedere tutto">${icon('ph:house-fill', 26)}</button>
               <button class="round" data-act="view" aria-label="Gira la vista">${icon('ph:arrow-clockwise-bold', 26)}</button>
               <button class="round" data-act="zin" aria-label="Avvicina">${icon('ph:magnifying-glass-plus-bold', 26)}</button>
               <button class="round" data-act="zout" aria-label="Allontana">${icon('ph:magnifying-glass-minus-bold', 26)}</button>
@@ -219,6 +220,7 @@ export class Workspace {
   private renderPalette() {
     const grid = this.q('.parts-grid');
     grid.replaceChildren();
+    this.q('.palette').classList.toggle('few', this.level.palette.length <= 12);
     for (const c of this.root.querySelectorAll<HTMLElement>('.chip-btn')) c.classList.toggle('on', c.dataset.cat === this.category);
     const order = PALETTE_ORDER.filter(t => this.level.palette.includes(t) && (this.category === 'tutti' || PARTS[t].category === this.category));
     for (const t of order) {
@@ -261,14 +263,20 @@ export class Workspace {
           p.attachedTo = moves.length === 1 ? attachTo || undefined : undefined;
           if (p.attachedTo !== was) this.markRest(p);
           if (p.attachedTo && !was) attachedNow = p;
+          // lasciato sopra un altro pezzo senza attaccarsi: scivola accanto, così non sparisce dentro
+          if (!p.attachedTo && moves.length === 1 && this.overlaps(p, p.x, p.z)) {
+            const free = this.nearestFree(p);
+            if (free) { p.x = free.x; p.z = free.z; toast(`${icon('ph:info-fill', 20)}Lì c'è già un altro pezzo: l'ho messo accanto.`, { ms: 2600 }); }
+          }
         }
         if (attachedNow) toast(this.attachMsg(attachedNow), { kind: 'ok', ms: 4500 });
         this.sync();
         // attaccato in alto (servo sul cartone del latte): se esce dalla vista, la vista si allarga
-        if (attachedNow && this.parts.some(p => p.type === 'milkCarton') && !this.scene.isVisible(attachedNow.id)) this.scene.fit(this.parts);
+        if (attachedNow && this.parts.some(p => p.type === 'milkCarton') && !this.scene.isVisible(attachedNow.id)) this.frame();
       },
       onSelect: (ids, wire) => { this.selIds = ids; this.selWire = wire; this.hideCtx(); this.renderSelTools(); },
-      onTerminal: ref => { if (this.selIds.length || this.selWire) this.scene.setSelection([], null); this.clickTerminal(ref); },
+      onTerminal: ref => { this.closeChoose(); if (this.selIds.length || this.selWire) this.scene.setSelection([], null); this.clickTerminal(ref); },
+      onChoose: (refs, x, y) => this.openChoose(refs, x, y),
       onWireEnd: (id, end, ref) => this.moveWireEnd(id, end, ref),
       onContext: (kind, id, x, y) => this.openCtx(kind, id, x, y),
       onButton: (b, down, mbId) => {
@@ -347,7 +355,12 @@ export class Workspace {
     const wrap = this.q('.canvas-wrap').getBoundingClientRect();
     const half = tools.offsetWidth / 2;
     tools.style.left = Math.round(Math.max(half + 6, Math.min(wrap.width - half - 6, s.x))) + 'px';
-    tools.style.top = Math.max(8, Math.round(s.y) - 58) + 'px';
+    // sopra o sotto il pezzo: dove c'è posto e dove non copre né lui né gli altri pezzi
+    const th = tools.offsetHeight, cx = parseFloat(tools.style.left);
+    const others = this.parts.filter(p => !p.attachedTo).map(p => { const c = this.scene.tableClient(p.x, p.z); return { x: c.x - wrap.left, y: c.y - wrap.top }; });
+    const cost = (top: number) => (top < 8 || top + th > wrap.height - 8 ? 100 : 0) + others.filter(o => Math.abs(o.x - cx) < half + 16 && o.y > top - 22 && o.y < top + th + 22).length;
+    const above = Math.round(s.y) - th - 10, below = s.below !== undefined ? Math.round(s.below + 12) : above;
+    tools.style.top = Math.max(8, Math.min(wrap.height - th - 8, cost(below) < cost(above) ? below : above)) + 'px';
   }
 
   private openCtx(kind: 'part' | 'wire' | 'none', _id: string | null, x: number, y: number) {
@@ -378,7 +391,7 @@ export class Workspace {
       case 'run': this.running ? this.stopRun() : this.run(); break;
       case 'undo': this.undo(); break;
       case 'view': this.scene.rotateView(); break;
-      case 'fit': this.scene.fit(this.parts); break;
+      case 'fit': this.frame(); break;
       case 'zin': this.scene.zoom(0.8); break;
       case 'zout': this.scene.zoom(1.25); break;
       case 'rotate': this.rotateSel(); break;
@@ -426,7 +439,8 @@ export class Workspace {
     this.positionSelTools();
     this.renderHint();
     this.q('.tip').hidden = true;
-    requestAnimationFrame(() => { this.scene.resize(); this.scene.fit(this.parts); });
+    this.closeChoose();
+    requestAnimationFrame(() => { this.scene.resize(); this.frame(this.framedOnce); this.framedOnce = true; });
     if (user) this.evaluate();
   }
 
@@ -443,23 +457,134 @@ export class Workspace {
     if (this.mode !== 'build') this.setMode('build', false);
     this.sync();
     this.scene.setSelection([id], null);
-    if (!this.scene.isVisible(id)) this.scene.fit(this.parts);
+    if (!this.scene.isVisible(id) || this.covered_(pos.x, pos.z)) this.frame();
   }
 
+  private framedOnce = false;
+  private hasTerminals(p: PartInst): boolean { return PARTS[p.type].terminals.length > 0 || this.parts.some(c => c.attachedTo === p.id && this.hasTerminals(c)); }
+  /** Inquadra quello che serve adesso: in Collega solo i pezzi con i cerchietti, più da vicino. */
+  private frame(smooth = true) {
+    if (!this.scene) return;
+    // quanto banco coprono i pulsanti ai lati e il suggerimento in alto
+    const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+    const vis = (sel: string) => { const e = this.root.querySelector<HTMLElement>(sel); const r = e && !e.hidden ? e.getBoundingClientRect() : null; return r && r.width ? r : null; };
+    const col = vis('.wire-colors'), vb = vis('.view-btns'), hint = this.running ? null : vis('.hint');
+    const side = vb && vb.height > vb.width;
+    const pad = {
+      x: 16 + 2 * Math.max(col ? col.right - wrap.left : 0, vb && side ? wrap.right - vb.left : 0),
+      y: 16 + (hint ? hint.bottom - wrap.top : 0) + (vb && !side ? wrap.bottom - vb.top : 0),
+    };
+    if (this.mode === 'wire' && !this.running) {
+      const roots = this.parts.filter(p => !p.attachedTo && this.hasTerminals(p));
+      if (roots.length) { this.scene.fit(roots, { smooth, tight: true, pad }); return; }
+    }
+    this.scene.fit(this.parts, { smooth, pad });
+  }
+
+  /** Un punto del banco è coperto dai pulsanti sopra il banco, o è fuori dallo schermo? */
+  private covered_(x: number, z: number) {
+    const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+    if (wrap.width < 50) return false;
+    const c = this.scene.tableClient(x, z);
+    const m = 34;
+    if (c.x < wrap.left + m || c.x > wrap.right - m || c.y < wrap.top + m || c.y > wrap.bottom - m) return true;
+    for (const sel of ['.view-btns', '.wire-colors', '.hint', '.sensors']) {
+      const e = this.root.querySelector<HTMLElement>(sel);
+      if (!e || e.hidden) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width && c.x > r.left - m && c.x < r.right + m && c.y > r.top - m && c.y < r.bottom + m) return true;
+    }
+    return false;
+  }
+
+  /** L'ingombro sul banco (mezzi lati), tenendo conto di come è girato. */
+  private half(p: PartInst) {
+    const [w, , d] = PARTS[p.type].size;
+    const r = (p.rot || 0) % 4;
+    return r === 0 ? { hw: w / 2, hd: d / 2 } : r === 2 ? { hw: d / 2, hd: w / 2 } : { hw: Math.max(w, d) / 2, hd: Math.max(w, d) / 2 };
+  }
+  /** Il pezzo `p`, messo in (x, z), finisce dentro un altro pezzo? I materiali leggeri possono stare uno sull'altro. */
+  private overlaps(p: PartInst, x: number, z: number, gap = -0.6) {
+    const a = this.half(p);
+    return this.parts.some(o => {
+      if (o.id === p.id || o.attachedTo || (LOOSE.has(p.type) && LOOSE.has(o.type))) return false;
+      const b = this.half(o);
+      return Math.abs(o.x - x) < a.hw + b.hw + gap && Math.abs(o.z - z) < a.hd + b.hd + gap;
+    });
+  }
+  /** Il posto libero più vicino a dove hai lasciato il pezzo. */
+  private nearestFree(p: PartInst) {
+    for (let r = 1; r <= 40; r += 1) for (let k = 0; k < 16; k++) {
+      const an = (k / 16) * Math.PI * 2;
+      const x = Math.round((p.x + Math.cos(an) * r) * 10) / 10, z = Math.round((p.z + Math.sin(an) * r) * 10) / 10;
+      if (Math.abs(x) > 39 || Math.abs(z) > 24) continue;
+      if (!this.overlaps(p, x, z, 0.4)) return { x, z };
+    }
+    return null;
+  }
+
+  /** Dove mettere un pezzo nuovo: in un posto libero, che si vede e che non sta sotto i pulsanti. */
   private freeSpot(type: string) {
-    const [w, , d] = PARTS[type].size;
-    const r = Math.max(w, d) / 2 + 1;
+    const ghost: PartInst = { id: '', type, x: 0, z: 0, rot: 0 };
     const cand: { x: number; z: number }[] = [];
     for (let zz = 2; zz >= -18; zz -= 5) for (let xx = 0; xx <= 34; xx += 5) { cand.push({ x: xx, z: zz }, { x: -xx, z: zz }); }
     for (let xx = 0; xx <= 34; xx += 6) cand.push({ x: xx, z: 9 }, { x: -xx, z: 9 }, { x: xx, z: 16 }, { x: -xx, z: 16 });
-    for (const c of cand) {
-      const ok = this.parts.filter(p => !p.attachedTo).every(p => {
-        const [pw, , pd] = PARTS[p.type].size;
-        return Math.hypot(p.x - c.x, p.z - c.z) > r + Math.max(pw, pd) / 2;
+    const free = cand.filter(c => !this.overlaps(ghost, c.x, c.z, 1.2));
+    if (this.scene) {
+      // tra i posti che si vedono, il più vicino al centro di quello che stai guardando
+      const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+      const mid = this.scene.tableAt(wrap.left + wrap.width / 2, wrap.top + wrap.height * 0.55);
+      const seen = free.filter(c => !this.covered_(c.x, c.z));
+      // ...ma non davanti o dietro a un pezzo alto: da dove guardi, uno coprirebbe l'altro
+      const g = this.half(ghost), gh = PARTS[type].size[1];
+      const hides = (c: { x: number; z: number }) => this.parts.some(o => {
+        if (o.attachedTo) return false;
+        const h = this.half(o), oh = PARTS[o.type].size[1];
+        if (Math.abs(o.x - c.x) >= g.hw + h.hw) return false;
+        const dz = c.z - o.z, reach = g.hd + h.hd;
+        return dz > 0 ? gh > 3 && dz < gh * 1.2 + reach : oh > 3 && -dz < oh * 1.2 + reach;
       });
-      if (ok) return c;
+      const score = (c: { x: number; z: number }) => Math.hypot(c.x - mid!.x, c.z - mid!.z) + (hides(c) ? 1000 : 0);
+      if (seen.length && mid) return seen.sort((a, b) => score(a) - score(b))[0];
     }
-    return { x: 0, z: 0 };
+    return free[0] ?? { x: 0, z: 0 };
+  }
+
+  // ---------- "Quale volevi toccare?" (con il dito due cerchietti vicini si confondono) ----------
+  private openChoose(refs: string[], cx: number, cy: number) {
+    const box = this.q('.term-choose');
+    const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+    const btn = (ref: string) => {
+      const [pid, tid] = ref.split(':');
+      const part = this.parts.find(x => x.id === pid);
+      const t = part && PARTS[part.type].terminals.find(t => t.id === tid);
+      const sw = t?.color ? `<span class="sw" style="background:${t.color}"></span>` : `<span class="sw sw-pad"></span>`;
+      return `<button class="btn tc-btn" data-ref="${esc(ref)}">${sw}${esc(t?.label ?? tid)}</button>`;
+    };
+    // nell'ordine in cui stanno sul pezzo (pin 0, pin 1, pin 2...), non in ordine di distanza
+    const ord = (ref: string) => { const [pid, tid] = ref.split(':'); const part = this.parts.find(x => x.id === pid); return (part ? this.parts.indexOf(part) : 0) * 100 + (part ? PARTS[part.type].terminals.findIndex(t => t.id === tid) : 0); };
+    refs = [...refs].sort((a, b) => ord(a) - ord(b));
+    box.innerHTML = `<b>Quale?</b>${refs.slice(0, 4).map(btn).join('')}<button class="icon-btn tc-x" aria-label="Chiudi">${icon('ph:x-bold', 18)}</button>`;
+    box.hidden = false;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    const x = Math.max(8, Math.min(wrap.width - w - 8, cx - wrap.left - w / 2));
+    const above = cy - wrap.top - h - 34;
+    box.style.left = Math.round(x) + 'px';
+    box.style.top = Math.round(above > 8 ? above : Math.min(wrap.height - h - 8, cy - wrap.top + 34)) + 'px';
+    this.scene.highlight(refs);
+    box.querySelector('.tc-x')!.addEventListener('click', () => this.closeChoose());
+    for (const b of box.querySelectorAll<HTMLElement>('.tc-btn')) b.addEventListener('click', () => {
+      const ref = b.dataset.ref!;
+      this.closeChoose();
+      if (this.selIds.length || this.selWire) this.scene.setSelection([], null);
+      this.clickTerminal(ref);
+    });
+  }
+  private closeChoose() {
+    const box = this.root.querySelector<HTMLElement>('.term-choose');
+    if (!box || box.hidden) return;
+    box.hidden = true;
+    this.scene?.highlight([]);
   }
 
   private deleteSel() {
@@ -1115,10 +1240,11 @@ export class Workspace {
   private showIssue() {
     const i = this.shown[this.issueIdx];
     if (!i?.refs.length) return;
-    const p = this.scene.termWorld(i.refs[0]);
-    if (p) this.scene.focusOn(p.x, p.z, 20);
     const needWire = /filo|collega|spina|GND|3V|pin/i.test(i.text);
     if (needWire && !this.running && this.mode !== 'wire') this.setMode('wire');
+    const p = this.scene.termWorld(i.refs[0]);
+    // dopo il cambio di scheda, altrimenti l'inquadratura della scheda nuova cancella questa
+    if (p) requestAnimationFrame(() => requestAnimationFrame(() => this.scene.focusOn(p.x, p.z, 20)));
   }
 
   private shakeIssueBar() {
@@ -1169,6 +1295,7 @@ export class Workspace {
     this.persist();
     const m = steps[n].mode;
     if (m !== this.mode) this.setMode(m, false);
+    else if (!this.running) this.frame(); // la vista segue il passo: torna a far vedere i pezzi che servono
     this.renderGuide();
     this.renderHint();
     this.openStepPop(false, this.doneSteps.has(n - 1));
@@ -1467,5 +1594,7 @@ export class Workspace {
 }
 
 const norm = (s: string) => (s || '').replace(/\s+/g, '');
+/** Materiali leggeri: possono stare uno sopra l'altro (un LED dentro il rotolo, una pallina nel bicchiere). */
+const LOOSE = new Set(['led', 'resistor', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall']);
 const TILTABLE = new Set(['servo', 'cardboardBox', 'cardboardPanel', 'paperCup', 'cardboardTube', 'battery']);
 const KEYS: Record<string, string> = { rotate: 'R', duplicate: 'Ctrl+D', delete: 'Canc' };

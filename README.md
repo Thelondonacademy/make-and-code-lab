@@ -25,6 +25,15 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 
 I progetti si salvano solo nel browser: niente account, niente dati inviati.
 
+## A prova di dita piccole
+
+Pensato per bambini di 6-8 anni su tablet e telefono, non solo al computer:
+
+- **Collegare i cavi col dito**: i tre fili del servo si aprono a ventaglio, in Collega la vista si avvicina da sola ai pezzi con i cerchietti e, se il dito cade a metà tra due cerchietti, un fumetto chiede "Quale?" con i pulsanti grandi.
+- **Pezzi**: ogni pezzo nuovo compare in un posto libero e visibile (mai sotto i pulsanti, mai davanti a un pezzo alto); un pezzo lasciato sopra un altro scivola accanto invece di sparirci dentro.
+- **Vista**: un dito sul banco vuoto la fa scorrere (non la gira) e non si esce mai dal banco; per girarla ci sono due dita o il pulsante tondo; la casetta rimette tutto in vista. La vista scivola, non salta.
+- **Misure**: pulsanti da almeno 44 px sul tocco, scritte da almeno 14 px, guida corta su telefono e tablet in verticale per lasciare spazio al banco.
+
 ## Per sviluppatori
 
 ```bash

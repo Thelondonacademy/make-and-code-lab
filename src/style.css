@@ -487,3 +487,95 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
 .buzz-x { width: 44px; height: 44px; flex: none; }
 .buzz-cv { flex: 1; width: 100%; min-height: 0; touch-action: none; cursor: grab; display: block; }
 @media (max-width: 560px) { .buzz-txt span { display: none; } .buzz-txt b { font-size: 16px; } .buzz { padding: 6px; } }
+
+/* ---------- "Quale volevi toccare?": due cerchietti vicini, si sceglie con i pulsanti grandi ---------- */
+.term-choose { position: absolute; z-index: 6; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 20px; background: #fff; border: 3px solid var(--orange); box-shadow: 0 6px 0 var(--line), 0 12px 30px rgba(0,0,0,.18); animation: pop .18s; max-width: calc(100% - 16px); flex-wrap: wrap; }
+.term-choose b { font-size: 16px; padding: 0 2px; }
+.tc-btn { min-height: 52px; padding: 0 14px; gap: 8px; font-size: 16px; border-radius: 16px; white-space: nowrap; }
+.tc-btn .sw { width: 24px; height: 24px; border-radius: 50%; }
+.sw-pad { background: radial-gradient(circle, #fff 0 30%, #C9A227 32% 100%); }
+.tc-x { width: 44px; height: 44px; color: var(--grey); }
+.round-home { background: var(--purple-soft); border-color: #E2CCEE; color: var(--purple); }
+
+/* ---------- dita piccole: pulsanti da almeno 44 px, scritte da almeno 14 ---------- */
+.step-n, .mb-label, .chip-btn, .guide-top .step-n { font-size: 14px; }
+.tag, .wire-colors, .ctx-title, .lesson-n, .brand small { font-size: 12.5px; }
+.chip-btn { height: 44px; }
+.swatch { width: 44px; height: 44px; }
+.wire-colors { width: 72px; }
+.sel-tools .btn-small { min-height: 46px; padding: 0 14px; font-size: 15px; }
+.link-btn { min-height: 44px; }
+.part-info { width: 36px; height: 36px; }
+.why summary { min-height: 44px; display: flex; align-items: center; }
+.why { padding: 4px 14px; }
+.why p { margin: 0 0 12px; }
+
+@media (max-width: 920px) {
+  .chip-btn { height: 44px; font-size: 14px; }
+  .part { font-size: 14px; flex-basis: 104px; line-height: 1.15; }
+  .part .tag { font-size: 12px; }
+  .part-info { width: 34px; height: 34px; }
+  .guide .btn, .guide .guide-nav .btn { min-height: 46px; font-size: 15px; }
+  .swatch { width: 40px; height: 40px; }
+  .wire-colors { width: 60px; font-size: 12px; }
+  .issue-actions .btn { min-height: 44px; font-size: 14px; }
+  .issue-text span { font-size: 14px; }
+  .ws .pill-level { font-size: 14px; }
+  .hint { font-size: 15px; }
+  .mode-wire .hint { left: 76px; max-width: calc(100% - 146px); }
+  .sel-tools { max-width: calc(100% - 12px); overflow-x: auto; scrollbar-width: none; }
+  /* tablet in verticale: guida corta (il testo completo è nel riquadro del passo), il banco prende lo spazio */
+  .guide { max-height: 26vh; }
+  .guide .why, .guide [data-act=listen], .guide .link-print { display: none; }
+  .guide-help { display: inline-flex; width: 46px; height: 46px; }
+  .guide { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
+  .guide > * { grid-column: 1 / -1; }
+  .guide > .guide-nav { grid-column: 1; margin-top: 0; }
+  .guide > .link-btn[data-act=restart] { grid-column: 2; font-size: 0; gap: 0; width: 46px; height: 46px; justify-content: center; border: 2px solid var(--line); border-radius: 14px; padding: 0; }
+  .guide > .link-btn[data-act=restart] .ico { width: 22px; height: 22px; }
+  .guide > .btn-soft[data-act=restart] { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .guide-top { margin-bottom: -2px; }
+  .guide h2 { font-size: 18px; }
+  .palette.few .chips { display: none; }
+  .wrap .lesson-n, .tile .tag, .tile .state { font-size: 14px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .guide { display: flex; flex-direction: column; }
+  .guide-top { flex-wrap: wrap; gap: 4px; }
+  .dots { flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; }
+  .guide h2 { font-size: 16px; line-height: 1.2; }
+  .guide .guide-nav { gap: 6px; }
+  .guide .guide-nav .btn { min-width: 0; min-height: 44px; padding: 0 8px; font-size: 14px; gap: 4px; }
+  .guide .guide-nav [data-act=prev] { flex: 0 0 46px; font-size: 0; gap: 0; }
+  .guide > .link-btn[data-act=restart] { width: auto; height: auto; min-height: 36px; font-size: 13px; gap: 6px; border: none; align-self: flex-start; }
+  .round { width: 44px; height: 44px; }
+  .view-btns { gap: 4px; }
+  .view-btns [data-act=zin], .view-btns [data-act=zout] { display: none; } /* si allarga con due dita: in orizzontale lo spazio è poco */
+  .ws .tab { height: 44px; }
+  .ws .top-right .btn-go { min-height: 44px; }
+  .wire-colors { top: 6px; transform: none; width: 52px; padding: 4px; gap: 4px; font-size: 0; max-height: calc(100% - 12px); }
+  .swatch { width: 38px; height: 38px; }
+  .mode-wire .hint { left: 66px; max-width: calc(100% - 126px); }
+  .part { font-size: 13px; flex-basis: auto; }
+}
+/* pagina del percorso e ultimi ritocchi: niente scritte sotto i 14 px, niente pulsanti sotto i 44 */
+.lesson small, .status, .tile-foot, .score small, .part, .brand small { font-size: 14px; }
+.tile-name { font-size: 15px; }
+.brand { min-height: 44px; }
+.name-form button, .btn-unlock, .issue-actions .btn { min-height: 44px; }
+.part .tag { font-size: 12.5px; }
+@media (max-height: 520px) and (orientation: landscape) { .part { font-size: 13px; } .swatch { height: 38px; } }
+@media (max-width: 760px), (max-height: 520px) and (orientation: landscape) {
+  /* telefono: il colore del cavo lo sceglie il laboratorio (si cambia toccando il cavo); il banco resta libero */
+  .wire-colors { display: none; }
+  .mode-wire .hint { left: 8px; max-width: calc(100% - 70px); }
+  /* la lista dei fili da collegare: tre etichette in fila, non tre righe */
+  .check { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .check li { padding: 4px 8px 4px 4px; gap: 6px; font-size: 14px; border-width: 2px; border-radius: 12px; }
+  .check li.ok { border-width: 2px; }
+  .ck { width: 24px; height: 24px; border-width: 2px; font-size: 13px; }
+  .sw { width: 16px; height: 16px; border-radius: 5px; }
+}

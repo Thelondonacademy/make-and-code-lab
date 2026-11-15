@@ -851,6 +851,7 @@ with sync_playwright() as pw:
     page.screenshot(path=f'{OUT}/18-cavo-spostato.png')
     # selezione multipla e spostamento insieme
     page.evaluate("window.__mcl.mode('build')")
+    page.wait_for_timeout(600)  # la vista scivola fino all'inquadratura nuova
     pop(page)
     page.evaluate("window.__mcl.select([])")
     before = {p['id']: (p['x'], p['z']) for p in page.evaluate('window.__mcl.partsFull()')}
@@ -1060,6 +1061,83 @@ with sync_playwright() as pw:
         pm.screenshot(path=f'{OUT}/72-tel-{nome}-codice.png')
         pm.evaluate("localStorage.removeItem('mcl-v1-work-lucenotte')")
         cm.close()
+
+    # ---- dita piccole: tablet con il tocco ----
+    print('# Tablet con il dito: pezzi, cavi, vista')
+    ct = b.new_context(viewport={'width': 1024, 'height': 768}, has_touch=True, device_scale_factor=2)
+    pt = ct.new_page()
+    pt.on('pageerror', lambda e: errors.append('pageerror dito: ' + str(e)))
+    cdp = ct.new_cdp_session(pt)
+
+    def touch(kind, x=0, y=0):
+        cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': [] if kind == 'touchEnd' else [{'x': x, 'y': y}]})
+
+    def finger_drag(a, c, n=14):
+        touch('touchStart', a['x'], a['y']); pt.wait_for_timeout(60)
+        for i in range(1, n + 1):
+            touch('touchMove', a['x'] + (c['x'] - a['x']) * i / n, a['y'] + (c['y'] - a['y']) * i / n); pt.wait_for_timeout(25)
+        touch('touchEnd'); pt.wait_for_timeout(500)
+
+    pt.goto(URL)
+    pt.wait_for_selector('.lessons')
+    pt.evaluate("localStorage.setItem('mcl-v1-unlock-all','true')")
+    pt.goto(URL + '#/livello/paperpet')
+    pt.wait_for_selector('canvas')
+    pt.wait_for_timeout(1200)
+    pop(pt)
+    hidden = []
+    for t in ('petBody', 'servo', 'petLegs', 'petFace', 'battery'):
+        pt.tap(f'.part[data-type={t}]'); pt.wait_for_timeout(1700); pop(pt); pt.wait_for_timeout(300)
+        pid = [x['id'] for x in st(pt)['parts'] if x['type'] == t][-1]
+        pt.evaluate("window.__mcl.select([])"); pt.wait_for_timeout(100)
+        q = pt.evaluate(f"window.__mcl.objClient('{pid}')")
+        if pt.evaluate(f"document.elementFromPoint({q['x']},{q['y']})?.tagName") != 'CANVAS':
+            hidden.append(t)
+    check(hidden == [], f'ogni pezzo nuovo compare in un posto libero, non sotto i pulsanti {hidden}')
+    sv = next(x['id'] for x in st(pt)['parts'] if x['type'] == 'servo')
+    bd = next(x['id'] for x in st(pt)['parts'] if x['type'] == 'petBody')
+    finger_drag(pt.evaluate(f"window.__mcl.objClient('{sv}')"), pt.evaluate("window.__mcl.objClient('mb1')"))
+    ps = {x['id']: x for x in pt.evaluate('window.__mcl.partsFull()')}
+    apart = abs(ps[sv]['x'] - ps['mb1']['x']) >= 5.5 or abs(ps[sv]['z'] - ps['mb1']['z']) >= 3.5
+    check(apart and 'accanto' in pt.inner_text('.toast'), 'servo lasciato sopra il micro:bit: scivola accanto, non ci finisce dentro')
+    finger_drag(pt.evaluate(f"window.__mcl.objClient('{sv}')"), pt.evaluate(f"window.__mcl.objClient('{bd}')"))
+    pt.wait_for_timeout(1700); pop(pt); pt.wait_for_timeout(600)
+    s = st(pt)
+    check(next(x for x in s['parts'] if x['id'] == sv).get('attachedTo') == bd and s['mode'] == 'wire', 'servo trascinato con il dito dentro Luna: si passa a Collega')
+    tc = lambda ref: pt.evaluate(f"window.__mcl.termClient('{ref}')")
+    lead = [tc(f'{sv}:{t}') for t in ('GND', 'VCC', 'SIG')]
+    gap = min(((lead[i]['x'] - lead[i + 1]['x']) ** 2 + (lead[i]['y'] - lead[i + 1]['y']) ** 2) ** .5 for i in (0, 1))
+    check(gap >= 16, f'in Collega i tre fili del servo sono lontani tra loro ({round(gap)} px)')
+    a0, a1 = tc('mb1:P0'), tc('mb1:P1')
+    pt.touchscreen.tap((a0['x'] + a1['x']) / 2, (a0['y'] + a1['y']) / 2); pt.wait_for_timeout(400)
+    labels = [x.inner_text().strip() for x in pt.locator('.term-choose:not([hidden]) .tc-btn').all()]
+    check(labels == ['pin 0', 'pin 1'], f'dito a metà tra due cerchietti: il fumetto chiede "Quale?" {labels}')
+    pt.screenshot(path=f'{OUT}/80-dito-quale.png')
+    pt.tap('.term-choose .tc-btn >> nth=0'); pt.wait_for_timeout(300)
+    check(pt.evaluate('window.__mcl.ws.pending') == 'mb1:P0' and pt.locator('.term-choose:not([hidden])').count() == 0, 'scelto "pin 0": il cavo parte da lì')
+    pt.evaluate("window.__mcl.ws.pending = null; window.__mcl.ws.scene.setPending(null)")
+    import random
+    random.seed(7)
+    for t, d in (('GND', 'GND'), ('VCC', '3V'), ('SIG', 'P0')):
+        for ref in (f'{sv}:{t}', f'mb1:{d}'):
+            q = tc(ref)
+            pt.touchscreen.tap(q['x'] + random.uniform(-10, 10), q['y'] + random.uniform(-10, 10)); pt.wait_for_timeout(350)
+            if pt.locator('.term-choose:not([hidden])').count():
+                pt.tap(f'.term-choose .tc-btn[data-ref="{ref}"]'); pt.wait_for_timeout(350)
+    got = {frozenset((x['a'].split(':')[1] + ('s' if sv in x['a'] else ''), x['b'].split(':')[1] + ('s' if sv in x['b'] else ''))) for x in pt.evaluate('window.__mcl.wiresList()')}
+    check(got == {frozenset(('GNDs', 'GND')), frozenset(('VCCs', '3V')), frozenset(('SIGs', 'P0'))}, 'dito impreciso (±10 px): i tre cavi del servo vanno tutti al posto giusto')
+    pt.wait_for_timeout(1800); pop(pt)
+    r = pt.evaluate("(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return {x:r.left+40,y:r.top+r.height*0.8,w:r.width}})()")
+    cam0 = pt.evaluate("window.__mcl.ws.scene.camera.position.toArray()")
+    for k in range(6):
+        finger_drag({'x': r['x'] + r['w'] * 0.6, 'y': r['y']}, r, 8)
+    cam1 = pt.evaluate("window.__mcl.ws.scene.camera.position.toArray()")
+    tg = pt.evaluate("window.__mcl.ws.scene.controls.target.toArray()")
+    check(abs(cam1[1] - cam0[1]) < 0.5 and abs(tg[0]) <= 42.01 and abs(tg[2]) <= 27.01, 'un dito sul banco vuoto fa scorrere la vista (non la gira) e non si esce dal banco')
+    pt.tap('.round-home'); pt.wait_for_timeout(700)
+    check(all(pt.evaluate(f"window.__mcl.ws.scene.isVisible('{i}')") for i in ps if not ps[i].get('attachedTo')), 'il pulsante Casa rimette tutti i pezzi in vista')
+    pt.evaluate("localStorage.removeItem('mcl-v1-work-paperpet')")
+    ct.close()
 
     # tablet
     ctx2 = b.new_context(viewport={'width': 1024, 'height': 768}, has_touch=True)

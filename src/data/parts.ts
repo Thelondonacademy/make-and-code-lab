@@ -111,9 +111,9 @@ export const PARTS: Record<string, PartDef> = {
     type: 'servo', name: 'Servo', category: 'movimento', icon: 'servo.svg', mountOn: 'petBody', mountAlso: ['milkCarton', 'catapultBase'],
     size: [4.8, 4.6, 1.9],
     terminals: [
-      { id: 'GND', label: 'filo marrone', kind: 'lead', color: '#7A4A22', pos: [-4.4, 0.25, 0.75] },
-      { id: 'VCC', label: 'filo rosso', kind: 'lead', color: '#E5484D', pos: [-4.4, 0.25, 0] },
-      { id: 'SIG', label: 'filo arancione', kind: 'lead', color: '#F7941D', pos: [-4.4, 0.25, -0.75] },
+      { id: 'GND', label: 'filo marrone', kind: 'lead', color: '#7A4A22', pos: [-4.5, 0.25, 2.0] },
+      { id: 'VCC', label: 'filo rosso', kind: 'lead', color: '#E5484D', pos: [-5.1, 0.25, 0] },
+      { id: 'SIG', label: 'filo arancione', kind: 'lead', color: '#F7941D', pos: [-4.5, 0.25, -2.0] },
     ],
     card: {
       cosa: 'Un piccolo motore che gira fino a un punto preciso e poi si ferma.',

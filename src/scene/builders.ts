@@ -189,8 +189,8 @@ function servo(): Built {
     leads.clear();
     PARTS.servo.terminals.forEach((t, i) => {
       const end = ends ? ends[i] : new THREE.Vector3(...t.pos);
-      const start = new THREE.Vector3(-1.7, 0.7, t.pos[2] * 0.35);
-      const mid = ends ? start.clone().lerp(end, 0.5).add(new THREE.Vector3(0, -0.6, 0)) : new THREE.Vector3(-3.0, 0.35, t.pos[2] * 0.8);
+      const start = new THREE.Vector3(-1.7, 0.7, (1 - i) * 0.26);
+      const mid = ends ? start.clone().lerp(end, 0.5).add(new THREE.Vector3(0, -0.6, 0)) : new THREE.Vector3(-3.0, 0.35, t.pos[2] * 0.45);
       const tube = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([start, mid, end]), 16, 0.12, 6), mat(new THREE.Color(t.color!).getHex()));
       leads.add(tube);
       const cap = mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), mat(0x1d1c1f), end.x, end.y, end.z);
@@ -366,7 +366,7 @@ export function petServoPose() {
 /** Dove escono i 3 fili del servo quando è nel corpo: dal buco dietro. (Coordinate del corpo.) */
 export function petLeadEnds() {
   const { L } = PET;
-  return [-0.9, 0, 0.9].map(x => new THREE.Vector3(x, 0.25, -L / 2 - 2.6));
+  return [-2.1, 0, 2.1].map(x => new THREE.Vector3(x, 0.25, -L / 2 - (x ? 2.4 : 3.0)));
 }
 
 function petFace(): Built {
