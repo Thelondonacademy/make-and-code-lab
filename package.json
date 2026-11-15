@@ -1,0 +1,43 @@
+{
+  "name": "make-and-code-lab",
+  "version": "0.1.0",
+  "description": "Laboratorio 3D open source per costruire robot con micro:bit V2, materiali di riciclo e MakeCode — per bambini dai 6 anni.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "icons": "node scripts/build-icons.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Thelondonacademy/make-and-code-lab.git"
+  },
+  "author": "The London Academy S.C.S. ETS",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Thelondonacademy/make-and-code-lab/issues"
+  },
+  "homepage": "https://github.com/Thelondonacademy/make-and-code-lab#readme",
+  "dependencies": {
+    "@fontsource/lexend": "^5.3.0",
+    "@microbit/makecode-embed": "^0.7.5",
+    "@microbit/microbit-connection": "^1.0.2",
+    "acorn": "^8.19.0",
+    "acorn-walk": "^8.3.5",
+    "astring": "^1.9.0",
+    "sucrase": "^3.35.1",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@iconify-json/fluent-emoji-flat": "^1.2.6",
+    "@iconify-json/game-icons": "^1.2.4",
+    "@iconify-json/ph": "^1.2.2",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "private": true,
+  "type": "module"
+}
