@@ -458,7 +458,50 @@ function usbLaptop(): Built {
   return { group: g };
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop };
+// ---------- Contapassi: la fascia alla caviglia ----------
+/** La gamba con la fascia: il piede guarda a sinistra (-x), la caviglia è in x = LEG.x. */
+export const LEG = { x: 1.5, r: 3.2, band: 3.6, bandY: 9.6 };
+
+function strap(): Built {
+  const g = new THREE.Group();
+  const shoe = roundedBox(15, 3, 7, 1.4, mat(0x3f6fb5, { roughness: 0.8 }));
+  shoe.position.set(-2.5, 0, 0);
+  g.add(shoe);
+  const sole = roundedBox(15.4, 0.6, 7.4, 1.5, mat(0xf4f1ea));
+  sole.position.set(-2.5, -0.05, 0);
+  g.add(sole);
+  for (const x of [-6, -4, -2]) g.add(mesh(new THREE.BoxGeometry(0.35, 0.2, 4.2), mat(0xffffff), x, 3.05, 0));
+  // il calzino: bianco con due righe in alto
+  const leg = mesh(new THREE.CylinderGeometry(LEG.r * 1.08, LEG.r, 14, 28), mat(0xf4f1ea, { roughness: 0.95 }), LEG.x, 9.5, 0);
+  g.add(leg);
+  for (const y of [14.3, 15.4]) g.add(mesh(new THREE.CylinderGeometry(LEG.r * 1.1, LEG.r * 1.1, 0.5, 28), mat(0x3f6fb5), LEG.x, y, 0));
+  g.add(mesh(new THREE.CylinderGeometry(LEG.r * 1.1, LEG.r * 1.1, 0.4, 28), mat(0xd9d4ca), LEG.x, 16.4, 0));
+  const band = mesh(new THREE.CylinderGeometry(LEG.band, LEG.band, 4.2, 40, 1, true), mat(0xf26b21, { roughness: 0.85, side: THREE.DoubleSide }), LEG.x, LEG.bandY, 0);
+  g.add(band);
+  const velcro = mesh(new THREE.BoxGeometry(1.6, 3.6, 0.3), mat(0xc4501a, { roughness: 1 }), LEG.x - LEG.band, LEG.bandY, 0);
+  velcro.rotation.y = Math.PI / 2;
+  g.add(velcro);
+  return { group: g };
+}
+
+/** Dove sta un pezzo allacciato alla fascia. */
+export function strapPose(type: string): { pos: THREE.Vector3; quat: THREE.Quaternion } | null {
+  const basis = (X: number[], Y: number[], Z: number[]) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...X), new THREE.Vector3(...Y), new THREE.Vector3(...Z)));
+  switch (type) {
+    // display verso di te, i pin in basso
+    case 'microbit': return { pos: new THREE.Vector3(LEG.x, LEG.bandY, LEG.band + 0.05), quat: basis([1, 0, 0], [0, 0, 1], [0, -1, 0]) };
+    // dietro, sul tallone
+    case 'battery': return { pos: new THREE.Vector3(LEG.x + LEG.band + 0.05, LEG.bandY, 0), quat: basis([0, 0, 1], [1, 0, 0], [0, 1, 0]) };
+    default: return null;
+  }
+}
+
+/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
+export function hostPose(host: string, type: string) {
+  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : null;
+}
+
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();

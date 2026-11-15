@@ -303,3 +303,29 @@ describe('Luna, il cagnolino di carta', () => {
     expect(f.errors).toEqual([]);
   });
 });
+
+describe('Il contapassi', () => {
+  it('conta i passi e al decimo mostra la faccina', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('contapassi')!.code);
+    await wait(30);
+    expect(rt.stats.textsShown).toContain('0');
+    rt.gesture('Shake');
+    await wait(400);
+    expect(rt.stats.textsShown).toContain('1');
+    for (let i = 0; i < 9; i++) { rt.gesture('Shake'); await wait(5); } // passi veloci: non se ne perde nessuno
+    await wait(450);
+    expect(rt.stats.shakes).toBe(10);
+    expect(rt.stats.iconsShown.has('Happy')).toBe(true);
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  });
+  it('micro:bit e pile si allacciano solo alla fascia', async () => {
+    const { mountOf } = await import('../src/data/parts');
+    expect(mountOf('microbit')).toBe('strap');
+    expect(mountOf('battery')).toBe('strap');
+    expect(mountOf('strap')).toBeNull();
+  });
+});

@@ -11,7 +11,8 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 - **Programma**: MakeCode di Microsoft è dentro la pagina, in italiano. Premi **Prova!** e il robot si muove nel 3D.
 - **Micro:bit vero**: con *Manda al micro:bit vero* il programma va sul micro:bit con il cavo USB (Chrome o Edge) oppure come file `.hex`.
 - **Didattica e sicurezza**: ogni pezzo ha una scheda ("Cos'è? Come funziona? Sicurezza") con lettura ad alta voce, e un'etichetta: *Da solo*, *Con un adulto*, *Solo l'adulto*.
-- I livelli seguono le lezioni del corso. Per ora: **Il cuore che batte** (lezione 1) e **Luna che scodinzola** (lezione 4), più il **Laboratorio libero**.
+- I livelli seguono le lezioni del corso. Per ora: **Il cuore che batte** e **Il contapassi** (lezione 1), **Luna che scodinzola** (lezione 4), più il **Laboratorio libero**.
+- **Il contapassi**: dal progetto "Step counter" di micro:bit.org e MakeCode. Micro:bit e pile su una fascia alla caviglia; ogni passo (scuoti) aggiunge 1, al traguardo compare la faccina. Versione facile: il codice è pronto, si cambia solo il numero dei passi.
 - **Luna che scodinzola**: un cagnolino di carta con il servo nella pancia e la stagnola sulla schiena. Accarezzi la stagnola (pin 1, tocco capacitivo del V2) e la coda scodinzola. Energia dal cavo USB o dalle pile. Le sagome da stampare sono in `public/paper-pet/luna-sagome.pdf` (disegni in `art/luna`; si rigenerano con `python3 scripts/process-luna-art.py` e poi `python3 scripts/build-paper-pet.py`).
 
 I progetti si salvano solo nel browser: niente account, niente dati inviati.

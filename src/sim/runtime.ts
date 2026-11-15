@@ -40,6 +40,7 @@ export interface RunStats {
   textsShown: string[];
   buttons: Set<string>;
   pins: Set<string>;
+  shakes: number;
   servoWrites: number;
   pinWrites: number;
   tones: number;
@@ -66,7 +67,7 @@ export class MicrobitRuntime {
   constructor(private bridge: Bridge) {}
 
   private newStats(): RunStats {
-    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), servoWrites: 0, pinWrites: 0, tones: 0 };
+    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), shakes: 0, servoWrites: 0, pinWrites: 0, tones: 0 };
   }
 
   // ---------- avvio e arresto ----------
@@ -205,7 +206,7 @@ export class MicrobitRuntime {
     if (down) { this.pinTouched.add(pin); this.stats.pins.add(pin); this.fire('pin:' + pin + ':pressed'); }
     else if (this.pinTouched.has(pin)) { this.pinTouched.delete(pin); this.fire('pin:' + pin); this.fire('pin:' + pin + ':released'); }
   }
-  gesture(g: string) { this.fire('gesture:' + g); }
+  gesture(g: string) { if (g === 'Shake' && this.running) this.stats.shakes++; this.fire('gesture:' + g); }
   setSensor<K extends keyof Sensors>(k: K, v: Sensors[K]) {
     const before = this.sensors.sound;
     this.sensors[k] = v;
@@ -222,8 +223,10 @@ export class MicrobitRuntime {
     this.bridge.display(this.leds);
   }
 
+  private anim = 0; // cambia con led.stopAnimation(): la scritta che scorre si ferma subito
   private async scroll(text: string, interval: number) {
     const gen = this.generation;
+    const anim = this.anim;
     const cols = textColumns(text);
     if (text.length === 1) {
       const frame = new Array(25).fill(0);
@@ -240,6 +243,7 @@ export class MicrobitRuntime {
       this.show(frame);
       await this.sleep(interval);
       this.check(gen);
+      if (anim !== this.anim) return;
     }
   }
 
@@ -333,6 +337,7 @@ export class MicrobitRuntime {
       showNumber: async (n: number, interval = 150) => {
         const s = Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
         rt.stats.textsShown.push(s);
+        if (rt.stats.textsShown.length > 300) rt.stats.textsShown.splice(0, 100);
         await rt.scroll(s, interval);
       },
       showString: async (s: string, interval = 150) => { rt.stats.textsShown.push(String(s)); await rt.scroll(String(s), interval); },
@@ -407,7 +412,7 @@ export class MicrobitRuntime {
       pointBrightness: (x: number, y: number) => rt.leds[y * 5 + x],
       setBrightness: (b: number) => { rt.brightness = Math.max(0, Math.min(255, b)); },
       brightness: () => rt.brightness,
-      enable: () => {}, stopAnimation: () => {},
+      enable: () => {}, stopAnimation: () => { rt.anim++; },
       plotBarGraph: (v: number, high: number) => {
         const n = Math.round((Math.max(0, v) / Math.max(1, high || 1023)) * 25);
         for (let i = 0; i < 25; i++) { const row = 4 - Math.floor(i / 5); rt.leds[row * 5 + (i % 5)] = i < n ? rt.brightness : 0; }

@@ -55,6 +55,9 @@ export interface LessonDef {
 
 const has = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type);
 const powered = (c: LevelCtx) => c.analysis.powered.size > 0;
+const onStrap = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type && c.parts.find(h => h.id === p.attachedTo)?.type === 'strap');
+/** Il numero di passi del traguardo (passi < N). */
+const stepGoal = (code: string) => { const m = code.match(/passi\s*<\s*(\d+)/); return m ? Number(m[1]) : null; };
 const foilOn = (c: LevelCtx, pin: string) => {
   const f = c.parts.find(p => p.type === 'foilPatch');
   return !!f && c.parts.some(mb => mb.type === 'microbit' && c.analysis.nets.same(`${f.id}:F`, `${mb.id}:${pin}`));
@@ -97,6 +100,67 @@ export const LEVELS: Level[] = [
     real: {
       materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Collega la spina al micro:bit.']],
+    },
+  },
+  {
+    id: 'contapassi',
+    lesson: 1,
+    title: 'Il contapassi',
+    icon: 'gi:footprint',
+    intro: 'Allacci il micro:bit alla caviglia. Ogni passo che fai, conta 1!',
+    palette: ['microbit', 'battery', 'strap'],
+    start: { parts: [], wires: [] },
+    code: `let passi = 0
+input.onGesture(Gesture.Shake, function () {
+    passi += 1
+    led.stopAnimation()
+})
+basic.forever(function () {
+    if (passi < 10) {
+        basic.showNumber(passi)
+    } else {
+        basic.showIcon(IconNames.Happy)
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'variables', 'logic'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Il contapassi gira libero: niente cavo USB.', goal: c => has(c, 'battery') },
+      {
+        title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.',
+        goal: powered,
+      },
+      {
+        title: 'Fai un passo', mode: 'code', text: 'Premi Prova! Poi premi "Fai un passo", tante volte. Il micro:bit conta: 1, 2, 3...',
+        goal: c => c.running && !!c.stats && c.stats.shakes > 0 && c.stats.textsShown.some(t => t !== '0'),
+        why: { q: 'Come fa a sentire i passi?', a: 'Dentro il micro:bit c\'è un sensore che sente il movimento. Quando la gamba si muove, il micro:bit viene scosso: è un passo!' },
+      },
+      {
+        title: 'Allaccialo alla caviglia', mode: 'build', text: 'Trascina la fascia sul banco. Poi trascina sopra la fascia il micro:bit e le pile.',
+        goal: c => onStrap(c, 'microbit') && onStrap(c, 'battery'),
+        checklist: c => [
+          { label: 'Fascia sul banco', done: has(c, 'strap') },
+          { label: 'Micro:bit sulla fascia', done: onStrap(c, 'microbit') },
+          { label: 'Pile sulla fascia', done: onStrap(c, 'battery') },
+        ],
+        why: { q: 'Perché alla caviglia?', a: 'La caviglia si muove a ogni passo. Il micro:bit va fuori, con le lucine verso di te. Le pile dietro.' },
+      },
+      {
+        title: 'Fai 10 passi', mode: 'code', text: 'Premi Prova! e fai 10 passi. Al decimo passo arriva una sorpresa!',
+        goal: c => c.running && !!c.stats && c.stats.iconsShown.has('Happy'),
+        why: { q: 'Cos\'è "passi"?', a: 'È una variabile: una scatola che ricorda un numero. Parte da 0. Ogni passo aggiunge 1.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Quanti passi vuoi fare? Nel blocco "se passi < 10" cambia il 10 con un altro numero. Poi premi Prova! e cammina.',
+        goal: c => c.runInStep && stepGoal(c.code) !== null && stepGoal(c.code) !== 10 && !!c.stats && c.stats.iconsShown.has('Happy'),
+        why: { q: 'Nel mondo vero conta giusto?', a: 'Quasi! Se cammini piano a volte non sente il passo. Se salti, a volte ne conta due. È un esperimento: prova e conta anche tu.' },
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice', 'un elastico largo, una fascia con il velcro o un calzino lungo', 'un po\' di nastro adesivo'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Allaccia la fascia: comoda, non troppo stretta.'], ['solo', 'Cammina piano e guarda dove vai.']],
     },
   },
   {
@@ -215,7 +279,7 @@ basic.forever(function () {
 ];
 
 export const LESSONS: LessonDef[] = [
-  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi' }, { icon: 'gi:moon', title: 'La luce notturna' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
+  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },

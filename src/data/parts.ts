@@ -30,7 +30,7 @@ export interface PartDef {
   safety?: Safety;       // etichetta mostrata nella tavolozza
   terminals: TerminalDef[];
   material?: boolean;    // materiale di riciclo: si può attaccare al braccio del servo
-  mountOn?: 'horn' | 'petBody'; // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
+  mountOn?: 'horn' | 'petBody' | 'strap'; // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
   tool?: boolean;        // attrezzo: solo scheda, non va sul banco
   size: [number, number, number]; // ingombro (cm) per posizionare e trascinare
   card: CardText;
@@ -51,7 +51,7 @@ const padZ = MB.d / 2 - 0.45;
 
 export const PARTS: Record<string, PartDef> = {
   microbit: {
-    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg',
+    type: 'microbit', name: 'micro:bit V2', category: 'cervello', icon: 'microbit.svg', mountOn: 'strap',
     size: [MB.w, MB.h, MB.d],
     terminals: [
       { id: 'P0', label: 'pin 0', kind: 'pad', pos: [-3.05, MB.h, padZ] },
@@ -75,7 +75,7 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   battery: {
-    type: 'battery', name: 'Pile 2×AAA', category: 'energia', icon: 'battery.svg', safety: 'adulto',
+    type: 'battery', name: 'Pile 2×AAA', category: 'energia', icon: 'battery.svg', safety: 'adulto', mountOn: 'strap',
     size: [7, 2.2, 3.8],
     terminals: [{ id: 'PLUG', label: 'spina', kind: 'plug', fits: 'BAT', pos: [3.9, 0.9, 0] }],
     card: {
@@ -270,6 +270,17 @@ export const PARTS: Record<string, PartDef> = {
       mondo: 'carta stagnola (oppure nastro di rame) e un cavo a coccodrillo',
     },
   },
+  strap: {
+    type: 'strap', name: 'Fascia per la caviglia', category: 'materiali', icon: 'socks.svg',
+    size: [15.5, 16, 7.5], terminals: [],
+    card: {
+      cosa: 'Una fascia elastica da mettere alla caviglia. Tiene fermi il micro:bit e le pile.',
+      come: ['Il micro:bit va fuori, con le lucine verso di te. Le pile dietro.', 'Quando cammini la gamba si muove: il micro:bit lo sente e conta un passo.'],
+      sicurezza: [['solo', 'Allacciare la fascia: comoda, non troppo stretta.'], ['adulto', 'Fissare il portapile con il nastro, se serve.']],
+      attenzione: 'Cammina piano e guarda dove vai.',
+      mondo: 'un elastico largo, una fascia con il velcro, oppure un calzino lungo e un po\' di nastro',
+    },
+  },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -303,10 +314,10 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
-export const mountOf = (type: string): 'horn' | 'petBody' | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
+export const mountOf = (type: string): 'horn' | 'petBody' | 'strap' | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
 
 export const SAFETY_LABEL: Record<Safety, string> = { solo: 'Da solo', adulto: 'Con un adulto', soloAdulto: "Solo l'adulto" };
 

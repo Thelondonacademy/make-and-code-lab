@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PARTS } from '../data/parts';
 import type { PartInst, Wire } from '../sim/circuit';
-import { buildPart, attachPose, bodyPose, petLeadEnds, Built, mat, COLORS } from './builders';
+import { buildPart, attachPose, bodyPose, hostPose, petLeadEnds, Built, mat, COLORS } from './builders';
 import { WIRE_COLORS, mountOf } from '../data/parts';
 
 export type SceneMode = 'build' | 'wire' | 'code';
@@ -147,6 +147,12 @@ export class Scene3D {
     this.cb.onFrame(dt);
     const t = performance.now() / 1000;
     for (const h of this.highlights) { const s = 1 + 0.25 * Math.sin(t * 6); h.scale.set(s, s, s); }
+    for (const [id, t0] of this.bumps) {
+      const o = this.objs.get(id);
+      const k = (performance.now() - t0) / 350;
+      if (!o || k >= 1) { this.bumps.delete(id); if (o) o.built.group.position.y = o.inst.attachedTo ? o.built.group.position.y : (o.inst.y ?? 0); continue; }
+      o.built.group.position.y = (o.inst.y ?? 0) + Math.sin(k * Math.PI) * 1.6;
+    }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
@@ -223,10 +229,11 @@ export class Scene3D {
     const g = o.built.group;
     const hostObj = p.attachedTo ? this.objs.get(p.attachedTo) : null;
     const inner = g.getObjectByName('straw-inner');
-    const bp = hostObj?.inst.type === 'petBody' ? bodyPose(p.type) : null;
+    const bp = hostObj ? hostPose(hostObj.inst.type, p.type) : null;
     const horn = hostObj?.inst.type === 'servo' ? hostObj.built.horn : null;
-    if (p.type === 'servo') this.relead(o, !!bp);
-    o.built.setMounted?.(!!bp);
+    const inBody = !!bp && hostObj?.inst.type === 'petBody';
+    if (p.type === 'servo') this.relead(o, inBody);
+    o.built.setMounted?.(inBody);
     if (bp && hostObj) {
       if (g.parent !== hostObj.built.group) hostObj.built.group.add(g);
       g.position.copy(bp.pos);
@@ -266,6 +273,13 @@ export class Scene3D {
     const ends = petLeadEnds().map(v => v.applyMatrix4(inv));
     set(ends);
     PARTS.servo.terminals.forEach((t, i) => o.terminals.get(t.id)!.position.copy(ends[i]));
+  }
+
+  private bumps = new Map<string, number>();
+  /** Un passo: il pezzo fa un saltello (la gamba che cammina). */
+  bump(id: string) {
+    const o = this.objs.get(id);
+    if (o && !o.inst.attachedTo) this.bumps.set(id, performance.now());
   }
 
   setServo(id: string, angle: number) {
@@ -747,9 +761,9 @@ export class Scene3D {
       return null;
     }
     for (const b of this.objs.values()) {
-      if (b.inst.type !== 'petBody' || b.inst.attachedTo) continue;
+      if (b.inst.type !== mount || b.inst.attachedTo) continue;
       const c = this.ownBox(b.built.group).getCenter(new THREE.Vector3());
-      if (Math.hypot(c.x - pos.x, c.z - pos.z) < 7.5 && !taken(b.inst.id, o.inst.type)) return b.inst.id;
+      if (Math.hypot(c.x - pos.x, c.z - pos.z) < (mount === 'strap' ? 9 : 7.5) && !taken(b.inst.id, o.inst.type)) return b.inst.id;
     }
     return null;
   }
