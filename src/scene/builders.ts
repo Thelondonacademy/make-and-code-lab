@@ -66,6 +66,8 @@ export function flatLabel(text: string, color = '#ffffff', heightCm = 0.5, weigh
 
 export interface Built {
   group: THREE.Group;
+  setMounted?: (on: boolean) => void; // zampe: sparse attorno al corpo o raccolte sul foglio
+  setLeads?: (ends: THREE.Vector3[] | null) => void; // servo: dove finiscono i 3 fili (null = posizione normale)
   leds?: THREE.Mesh[];
   buttons?: Record<string, THREE.Object3D>;
   logo?: THREE.Object3D;
@@ -124,6 +126,11 @@ function microbit(): Built {
   const sl = flatLabel('pile', '#E6DDD2', 0.36, 600);
   sl.position.set(1.6, h + 0.02, -MB.d / 2 + 1.25);
   g.add(sl);
+  const usb = mesh(new THREE.BoxGeometry(0.9, 0.35, 0.55), mat(0xc0c4cc, { metalness: 0.7, roughness: 0.3 }), -1.4, h + 0.18, -MB.d / 2 + 0.45);
+  g.add(usb);
+  const ul = flatLabel('USB', '#E6DDD2', 0.34, 600);
+  ul.position.set(-1.4, h + 0.02, -MB.d / 2 + 1.15);
+  g.add(ul);
   const name = flatLabel('micro:bit', '#9A938C', 0.38, 600);
   name.position.set(-2.4, h + 0.02, -2.6);
   g.add(name);
@@ -174,17 +181,24 @@ function servo(): Built {
   horn.add(tip);
   horn.children.forEach(c => { c.userData.horn = true; });
   g.add(horn);
-  // i 3 fili colorati
-  for (const t of PARTS.servo.terminals) {
-    const end = new THREE.Vector3(...t.pos);
-    const start = new THREE.Vector3(-1.7, 0.7, t.pos[2] * 0.35);
-    const mid = new THREE.Vector3(-3.0, 0.35, t.pos[2] * 0.8);
-    const tube = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([start, mid, end]), 12, 0.12, 6), mat(new THREE.Color(t.color!).getHex()));
-    g.add(tube);
-    const cap = mesh(new THREE.BoxGeometry(0.5, 0.28, 0.3), mat(0x1d1c1f), end.x - 0.15, end.y, end.z);
-    g.add(cap);
-  }
-  return { group: g, horn };
+  // i 3 fili colorati (si possono far passare da un'altra parte, per esempio dal buco dietro il corpo di Luna)
+  const leads = new THREE.Group();
+  g.add(leads);
+  const setLeads = (ends: THREE.Vector3[] | null) => {
+    leads.clear();
+    PARTS.servo.terminals.forEach((t, i) => {
+      const end = ends ? ends[i] : new THREE.Vector3(...t.pos);
+      const start = new THREE.Vector3(-1.7, 0.7, t.pos[2] * 0.35);
+      const mid = ends ? start.clone().lerp(end, 0.5).add(new THREE.Vector3(0, -0.6, 0)) : new THREE.Vector3(-3.0, 0.35, t.pos[2] * 0.8);
+      const tube = mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([start, mid, end]), 16, 0.12, 6), mat(new THREE.Color(t.color!).getHex()));
+      leads.add(tube);
+      const cap = mesh(new THREE.BoxGeometry(0.3, 0.28, 0.3), mat(0x1d1c1f), end.x, end.y, end.z);
+      leads.add(cap);
+    });
+    leads.traverse(o => { o.userData.partRoot = g; });
+  };
+  setLeads(null);
+  return { group: g, horn, setLeads };
 }
 
 function led(): Built {
@@ -284,7 +298,163 @@ function foilBall(): Built {
   return { group: g };
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall };
+// ---------- Luna (Paper Pet) ----------
+const BASE = (import.meta as any).env?.BASE_URL || './';
+const texCache = new Map<string, THREE.Texture>();
+function tex(file: string) {
+  if (!texCache.has(file)) {
+    const t = new THREE.TextureLoader().load(BASE + 'paper-pet/' + file);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    texCache.set(file, t);
+  }
+  return texCache.get(file)!;
+}
+const paperMat = (file: string) => new THREE.MeshStandardMaterial({ map: tex(file), transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, roughness: 0.9 });
+
+/** Misure del corpo di Luna (scala del banco: 1,5 × il vero, come gli altri pezzi). */
+export const PET = { W: 6.9, L: 13.5, HF: 7.5, HB: 3.3, TOP: 6.0 };
+
+function petBody(): Built {
+  const g = new THREE.Group();
+  const { W, L, HF, HB, TOP } = PET;
+  // profilo visto di fianco: u dal davanti, h altezza
+  const s = new THREE.Shape();
+  s.moveTo(0, 0); s.lineTo(L, 0); s.lineTo(L, HB); s.lineTo(TOP, HF); s.lineTo(0, HF); s.lineTo(0, 0);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: W, bevelEnabled: false });
+  geo.rotateY(Math.PI / 2);          // u → -z
+  geo.translate(-W / 2, 0, L / 2);   // davanti a z = +L/2
+  const body = mesh(geo, mat(0xeab554, { roughness: 0.95 }));
+  g.add(body);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0xb98a3a }));
+  g.add(edges);
+  // macchie del mantello e finestra del servo (decorazioni piatte sulla discesa)
+  const slopeLen = Math.hypot(L - TOP, HF - HB);
+  const ang = Math.atan2(HF - HB, L - TOP);
+  const win = mesh(new THREE.PlaneGeometry(1.95, 3.5), mat(0x3d2a17));
+  const t = 0.35;
+  win.position.set(0, HF - t * (HF - HB) + 0.02, L / 2 - (TOP + t * (L - TOP)) - 0.01);
+  win.rotation.set(-Math.PI / 2 + ang, 0, 0);
+  g.add(win);
+  // uscita dei cavi dietro
+  const hole = mesh(new THREE.PlaneGeometry(1.8, 1.2), mat(0x3d2a17));
+  hole.position.set(0, 0.6, -L / 2 - 0.02);
+  hole.rotation.y = Math.PI;
+  g.add(hole);
+  void slopeLen;
+  return { group: g };
+}
+
+/** Dove sta il servo infilato nel corpo: braccio fuori dalla discesa, a metà. */
+export function petServoPose() {
+  const { L, HF, HB, TOP } = PET;
+  const t = 0.35;
+  const P = new THREE.Vector3(0, HF - t * (HF - HB), L / 2 - (TOP + t * (L - TOP)));
+  const d = new THREE.Vector3(0, HB - HF, -(L - TOP)).normalize();     // giù per la discesa
+  const n = new THREE.Vector3(0, -d.z, d.y).multiplyScalar(-1);          // fuori dalla discesa, verso l'alto
+  if (n.y < 0) n.negate();
+  const X = d.clone();                // il braccio a 90° guarda giù per la discesa: la coda va indietro
+  const Y = n.clone();
+  const Z = new THREE.Vector3().crossVectors(X, Y);
+  const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+  const target = P.clone().add(n.clone().multiplyScalar(0.25));
+  const hornLocal = new THREE.Vector3(-0.85, 3.95, 0).applyQuaternion(q);
+  return { pos: target.sub(hornLocal), quat: q };
+}
+
+/** Dove escono i 3 fili del servo quando è nel corpo: dal buco dietro. (Coordinate del corpo.) */
+export function petLeadEnds() {
+  const { L } = PET;
+  return [-0.9, 0, 0.9].map(x => new THREE.Vector3(x, 0.25, -L / 2 - 2.6));
+}
+
+function petFace(): Built {
+  const g = new THREE.Group();
+  const face = mesh(new THREE.PlaneGeometry(4.6, 4.6), paperMat('luna-face.svg'));
+  face.position.y = 2.3;
+  face.castShadow = false;
+  g.add(face);
+  return { group: g };
+}
+
+function petTail(): Built {
+  const g = new THREE.Group();
+  const tail = mesh(new THREE.PlaneGeometry(3.6, 6), paperMat('luna-tail.svg'));
+  tail.name = 'tail-plane';
+  tail.position.set(0, 3, 0);
+  g.add(tail);
+  return { group: g };
+}
+
+function petLegs(): Built {
+  const g = new THREE.Group();
+  const m = paperMat('luna-paw.svg');
+  const sheet = mesh(new THREE.PlaneGeometry(5.6, 4.6), mat(0xfbf8f1, { side: THREE.DoubleSide }), 0, 0.02, 0);
+  sheet.rotation.x = -Math.PI / 2;
+  sheet.castShadow = false;
+  sheet.receiveShadow = true;
+  g.add(sheet);
+  const paws: THREE.Mesh[] = [];
+  for (let i = 0; i < 4; i++) {
+    const p = mesh(new THREE.PlaneGeometry(2.2, 1.76), m, 0, 0.05, 0);
+    p.castShadow = false;
+    paws.push(p);
+    g.add(p);
+  }
+  const bench = [[-1.3, -1.05, 0], [1.3, -1.05, 0], [-1.3, 1.05, 0], [1.3, 1.05, 0]];
+  const body = [[-1.9, PET.L / 2 + 0.45, 0], [1.9, PET.L / 2 + 0.45, 0], [-1.9, -PET.L / 2 - 0.45, Math.PI], [1.9, -PET.L / 2 - 0.45, Math.PI]];
+  const setMounted = (on: boolean) => {
+    sheet.visible = !on;
+    (on ? body : bench).forEach(([x, z, r], i) => { paws[i].position.set(x, 0.05, z); paws[i].rotation.set(-Math.PI / 2, 0, r); });
+  };
+  setMounted(false);
+  return { group: g, setMounted };
+}
+
+function foilPatch(): Built {
+  const g = new THREE.Group();
+  const geo = new THREE.PlaneGeometry(5.2, 3, 12, 8);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, (Math.sin(i * 12.9898) * 43758.5453 % 1) * 0.06);
+  geo.computeVertexNormals();
+  const f = mesh(geo, mat(0xe6e9ee, { metalness: 0.35, roughness: 0.3, emissive: 0x30343a, side: THREE.DoubleSide }), 0, 0.06, 0);
+  f.rotation.x = -Math.PI / 2;
+  g.add(f);
+  return { group: g };
+}
+
+function usbLaptop(): Built {
+  const g = new THREE.Group();
+  g.add(roundedBox(9, 0.5, 6, 0.4, mat(0xa3a8b3, { metalness: 0.4, roughness: 0.4 })));
+  g.add(mesh(new THREE.BoxGeometry(7.6, 0.04, 3.4), mat(0x3a3d45), 0, 0.52, 0.4));
+  const lid = new THREE.Group();
+  lid.position.set(0, 0.5, -3);
+  lid.rotation.x = -0.32;
+  lid.add(mesh(new THREE.BoxGeometry(9, 5.8, 0.3), mat(0x3a3d45), 0, 2.9, 0));
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 200;
+  const x = c.getContext('2d')!;
+  x.fillStyle = '#3454D1'; x.fillRect(0, 0, 320, 200);
+  x.fillStyle = '#F5F0EA'; x.fillRect(0, 0, 320, 26);
+  x.fillStyle = '#F7941D'; x.fillRect(110, 50, 120, 30);
+  x.fillStyle = '#2E8B57'; x.fillRect(110, 92, 150, 30);
+  x.fillStyle = '#833CA3'; x.fillRect(110, 134, 100, 30);
+  x.fillStyle = '#1D1C1F'; x.fillRect(16, 50, 70, 56);
+  x.fillStyle = '#F6520A'; for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) if ((i + j) % 2 === 0) x.fillRect(24 + i * 12, 56 + j * 10, 6, 5);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(8.2, 5.1), new THREE.MeshBasicMaterial({ map: t }));
+  screen.position.set(0, 2.95, 0.16);
+  lid.add(screen);
+  g.add(lid);
+  // cavo e spina USB a destra
+  const pts = [new THREE.Vector3(4.5, 0.25, 1.5), new THREE.Vector3(5.1, 0.3, 1.5), new THREE.Vector3(5.6, 0.4, 1.5)];
+  g.add(mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 6, 0.12, 6), mat(0x55585f)));
+  g.add(mesh(new THREE.BoxGeometry(0.6, 0.35, 0.5), mat(0xc0c4cc, { metalness: 0.6 }), 5.8, 0.4, 1.5));
+  return { group: g };
+}
+
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();
@@ -292,9 +462,23 @@ export function buildPart(type: string): Built {
   return b;
 }
 
+/** Posizione e rotazione di un pezzo attaccato al corpo di Luna. */
+export function bodyPose(type: string): { pos: THREE.Vector3; quat: THREE.Quaternion } | null {
+  const { L, HF, TOP } = PET;
+  const q = (x: number, y: number, z: number) => new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z));
+  switch (type) {
+    case 'servo': return petServoPose();
+    case 'petFace': return { pos: new THREE.Vector3(0, 1.2, L / 2 + 0.04), quat: q(0, 0, 0) };
+    case 'petLegs': return { pos: new THREE.Vector3(0, 0, 0).add(new THREE.Vector3(0, 0, 0)), quat: q(0, 0, 0) };
+    case 'foilPatch': return { pos: new THREE.Vector3(0, HF + 0.01, L / 2 - TOP / 2), quat: q(0, 0, 0) };
+    default: return null;
+  }
+}
+
 /** Posizione e rotazione di un materiale quando è attaccato al braccio del servo. */
 export function attachPose(type: string): { pos: [number, number, number]; rotZ: number; rotX?: number } {
   switch (type) {
+    case 'petTail': return { pos: [1.4, 0.12, 0], rotZ: -0.6 };
     case 'straw': return { pos: [2.4, 0.1, 0], rotZ: -0.5 };
     case 'paperCup': return { pos: [0.6, 0.1, 0], rotZ: 0 };
     case 'cardboardPanel': return { pos: [1.3, 0.15, 0], rotZ: -Math.PI / 2 + 0.25 };

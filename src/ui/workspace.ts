@@ -1,7 +1,7 @@
 // Il laboratorio: banco 3D, tavolozza dei pezzi, guida passo passo, MakeCode e "Prova!".
 import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER } from '../data/parts';
 import type { Level, Mode, LevelCtx } from '../data/levels';
-import { analyze, canConnect, Issue, PartInst, Wire, Analysis } from '../sim/circuit';
+import { analyze, canConnect, Issue, PartInst, Wire, Analysis, PIN_PADS } from '../sim/circuit';
 import { MicrobitRuntime } from '../sim/runtime';
 import { Hardware } from '../sim/hardware';
 import { Scene3D } from '../scene/scene3d';
@@ -13,6 +13,7 @@ import { openCard } from './card';
 import { speak, canSpeak, stopSpeaking } from '../speech';
 import { tone, cheer } from '../audio';
 import { loadWork, saveWork, clearWork, saveStars, loadProgress } from '../store';
+const PUB: string = (import.meta as any).env?.BASE_URL || './';
 
 const BLOCKING = new Set(['microbit-off', 'short', 'servo-reversed']);
 const MODE_LABEL: Record<Mode, string> = { build: 'Costruisci', wire: 'Collega', code: 'Programma' };
@@ -242,16 +243,16 @@ export class Workspace {
     this.scene = new Scene3D(this.q('.canvas-wrap'), {
       onMove: (moves, attachTo) => {
         this.pushUndo();
-        let attachedNow = false;
+        let attachedNow: PartInst | null = null;
         for (const m of moves) {
           const p = this.parts.find(p => p.id === m.id);
           if (!p) continue;
           const was = p.attachedTo;
           p.x = m.x; p.z = m.z;
           p.attachedTo = moves.length === 1 ? attachTo || undefined : undefined;
-          if (p.attachedTo && !was) attachedNow = true;
+          if (p.attachedTo && !was) attachedNow = p;
         }
-        if (attachedNow) toast(`${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`, { kind: 'ok', ms: 4500 });
+        if (attachedNow) toast(this.attachMsg(attachedNow), { kind: 'ok', ms: 4500 });
         this.sync();
       },
       onSelect: (ids, wire) => { this.selIds = ids; this.selWire = wire; this.hideCtx(); this.renderSelTools(); },
@@ -261,6 +262,7 @@ export class Workspace {
       onButton: (b, down) => { this.rt.pressButton(b, down); for (const mb of this.parts.filter(p => p.type === 'microbit')) this.scene.setButtonPressed(mb.id, b, down); },
       onLogo: down => this.rt.touchLogo(down),
       onPad: (pin, down) => this.rt.touchPin(pin, down),
+      onFoil: (id, down) => this.touchFoil(id, down),
       onFrame: dt => { this.hw.step(dt); if (this.selIds.length || this.selWire) this.positionSelTools(); },
       onDrop: (type, x, z) => this.addPart(type, x, z),
     });
@@ -934,6 +936,7 @@ export class Workspace {
         <button class="btn" data-act="prev" ${this.step === 0 ? 'disabled' : ''}>${icon('ph:arrow-left-bold', 20)}Indietro</button>
         <button class="btn btn-next" data-act="next" ${done && this.step < L.steps.length - 1 ? '' : 'disabled'}>Avanti${icon('ph:arrow-right-bold', 20)}</button>
       </div>
+      ${L.real.printable ? `<a class="link-btn link-print" href="${PUB + L.real.printable.file}" download target="_blank" rel="noopener">${icon('ph:download-simple-bold', 16)}${esc(L.real.printable.label)}</a>` : ''}
       <button class="link-btn" data-act="restart">${icon('ph:arrow-counter-clockwise-bold', 16)}Ricomincia il progetto</button>`;
     this.q('.code-step').innerHTML = `<span class="code-step-n">${this.step + 1}</span><div class="code-step-txt"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>
       ${canSpeak() ? `<button class="btn btn-small" data-act="listen" aria-label="Ascolta">${icon('ph:speaker-high-fill', 18)}</button>` : ''}
@@ -960,17 +963,55 @@ export class Workspace {
 
   closeStepPop() { this.q('.step-pop').hidden = true; }
 
+  /** Cosa succede nel mondo vero quando un pezzo si attacca a un altro. */
+  private attachMsg(p: PartInst): string {
+    const host = this.parts.find(h => h.id === p.attachedTo)?.type;
+    if (host === 'petBody') {
+      if (p.type === 'servo') return `${img('luna.svg', 24)}Il servo è nella pancia di Luna! Il braccio bianco esce dalla schiena.`;
+      if (p.type === 'foilPatch') return `${img('luna.svg', 24)}Stagnola sulla schiena! Nel mondo vero la incolli con la colla stick.`;
+      return `${img('glue-stick.svg', 24)}Attaccato a Luna! Nel mondo vero lo incolli con la colla stick.`;
+    }
+    if (p.type === 'petTail') return `${img('luna-tail.svg', 24)}Coda infilata! La tasca di carta tiene la coda sul braccio del servo.`;
+    return `${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`;
+  }
+
+  /** I pin del micro:bit collegati (con i fili) alla stagnola. */
+  private foilPins(id: string): string[] {
+    const a = this.analysis;
+    if (!a) return [];
+    const out: string[] = [];
+    for (const mb of this.parts.filter(p => p.type === 'microbit')) for (const pin of PIN_PADS) if (a.nets.same(`${id}:F`, `${mb.id}:${pin}`)) out.push(pin);
+    return out;
+  }
+
+  private touchFoil(id: string, down: boolean) {
+    for (const pin of this.foilPins(id)) this.rt.touchPin(pin, down);
+    this.q<HTMLElement>('.mb-pet')?.classList.toggle('down', down);
+  }
+
+  private wiredFoil(): string | null {
+    return this.parts.find(p => p.type === 'foilPatch' && this.foilPins(p.id).length)?.id ?? null;
+  }
+
   private renderHint() {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.svg', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
     h.innerHTML = html;
     h.classList.toggle('hint-run', this.running);
-    for (const b of h.querySelectorAll<HTMLElement>('.mb-btn')) {
+    const pet = h.querySelector<HTMLElement>('.mb-pet');
+    if (pet) {
+      const fid = pet.dataset.foil!;
+      pet.addEventListener('pointerdown', e => { e.preventDefault(); pet.setPointerCapture(e.pointerId); this.touchFoil(fid, true); });
+      pet.addEventListener('pointerup', () => this.touchFoil(fid, false));
+      pet.addEventListener('pointercancel', () => this.touchFoil(fid, false));
+      pet.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.touchFoil(fid, true); setTimeout(() => this.touchFoil(fid, false), 1200); } });
+    }
+    for (const b of h.querySelectorAll<HTMLElement>('.mb-btn:not(.mb-pet)')) {
       const name = b.dataset.btn as 'A' | 'B' | 'AB';
       const press = (down: boolean) => {
         this.rt.pressButton(name, down);
@@ -1000,6 +1041,7 @@ export class Workspace {
         <div><h3>${icon('ph:shopping-bag-fill', 22, 'color:#B8862A')}Ti serve</h3><ul>${R.materials.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
         <div><h3>${icon('ph:shield-check-fill', 22, 'color:#2E8B57')}Sicurezza</h3><ul class="safe">${R.safety.map(([s, t]) => `<li>${safetyTag(s as any)}<span>${esc(t)}</span></li>`).join('')}</ul></div>
       </div>
+      ${R.printable ? `<p><a class="btn btn-soft" href="${PUB + R.printable.file}" download target="_blank" rel="noopener">${icon('ph:download-simple-bold', 22)}${esc(R.printable.label)}</a></p>` : ''}
       <div class="row">
         <button class="btn btn-go" data-x="dl">${icon('ph:usb-fill', 22)}Manda al micro:bit vero</button>
         <a class="btn" href="#/">${icon('ph:flag-fill', 20)}Torna al percorso</a>
@@ -1008,7 +1050,7 @@ export class Workspace {
     this.closeStepPop();
     m.root.querySelector('[data-x=stay]')!.addEventListener('click', m.close);
     m.root.querySelector('[data-x=dl]')!.addEventListener('click', () => { m.close(); this.setMode('code'); void this.download(); });
-    m.root.querySelector('a')!.addEventListener('click', m.close);
+    m.root.querySelector('a[href="#/"]')!.addEventListener('click', m.close);
   }
 
   // ---------- sincronizzazione ----------
@@ -1054,6 +1096,7 @@ export class Workspace {
       termClient: (ref: string) => this.scene.terminalClient(ref),
       partClient: (id: string) => this.scene.partClient(id),
       hornClient: (id: string) => this.scene.hornTipClient(id),
+      objClient: (id: string) => this.scene.objectClient(id),
       buttonClient: (mb: string, b: string) => this.scene.buttonClient(mb, b),
       wireClient: (id: string) => this.scene.wireClient(id),
       clipClient: (id: string, end: 'a' | 'b') => this.scene.clipClient(id, end),

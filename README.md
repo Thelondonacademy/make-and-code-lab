@@ -11,7 +11,8 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 - **Programma**: MakeCode di Microsoft è dentro la pagina, in italiano. Premi **Prova!** e il robot si muove nel 3D.
 - **Micro:bit vero**: con *Manda al micro:bit vero* il programma va sul micro:bit con il cavo USB (Chrome o Edge) oppure come file `.hex`.
 - **Didattica e sicurezza**: ogni pezzo ha una scheda ("Cos'è? Come funziona? Sicurezza") con lettura ad alta voce, e un'etichetta: *Da solo*, *Con un adulto*, *Solo l'adulto*.
-- I livelli seguono le lezioni del corso. Per ora: **Il cuore che batte** (lezione 1) e **Il cagnolino che scodinzola** (lezione 4), più il **Laboratorio libero**.
+- I livelli seguono le lezioni del corso. Per ora: **Il cuore che batte** (lezione 1), **Il cagnolino che scodinzola** e **Luna che scodinzola** (lezione 4), più il **Laboratorio libero**.
+- **Luna che scodinzola**: un cagnolino di carta con il servo nella pancia e la stagnola sulla schiena. Accarezzi la stagnola (pin 1, tocco capacitivo del V2) e la coda scodinzola. Energia dal cavo USB o dalle pile. Le sagome da stampare sono in `public/paper-pet/luna-sagome.pdf` (si rigenerano con `python3 scripts/build-paper-pet.py`).
 
 I progetti si salvano solo nel browser: niente account, niente dati inviati.
 
@@ -46,4 +47,4 @@ Il codice JavaScript che MakeCode genera dai blocchi viene tradotto in JavaScrip
 
 ## Licenze
 
-Codice: MIT © The London Academy S.C.S. ETS. MakeCode è di Microsoft; micro:bit è un marchio della Micro:bit Educational Foundation. Icone: Fluent Emoji (MIT), Phosphor (MIT), game-icons.net (CC BY 3.0). Carattere Lexend (OFL).
+Codice: MIT © The London Academy S.C.S. ETS. MakeCode è di Microsoft; micro:bit è un marchio della Micro:bit Educational Foundation. Icone: Fluent Emoji (MIT), Phosphor (MIT), game-icons.net (CC BY 3.0). Carattere Lexend (OFL). Luna che scodinzola si ispira al Paper Pet di OKdo; personaggio, disegni e sagome sono originali.

@@ -39,6 +39,7 @@ export interface RunStats {
   iconsShown: Set<string>;
   textsShown: string[];
   buttons: Set<string>;
+  pins: Set<string>;
   servoWrites: number;
   pinWrites: number;
   tones: number;
@@ -65,7 +66,7 @@ export class MicrobitRuntime {
   constructor(private bridge: Bridge) {}
 
   private newStats(): RunStats {
-    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), servoWrites: 0, pinWrites: 0, tones: 0 };
+    return { started: Date.now(), iconsShown: new Set(), textsShown: [], buttons: new Set(), pins: new Set(), servoWrites: 0, pinWrites: 0, tones: 0 };
   }
 
   // ---------- avvio e arresto ----------
@@ -201,7 +202,7 @@ export class MicrobitRuntime {
     } else if (this.logoDown) { this.logoDown = false; this.fire('logo:Released'); }
   }
   touchPin(pin: string, down: boolean) {
-    if (down) { this.pinTouched.add(pin); this.fire('pin:' + pin + ':pressed'); }
+    if (down) { this.pinTouched.add(pin); this.stats.pins.add(pin); this.fire('pin:' + pin + ':pressed'); }
     else if (this.pinTouched.has(pin)) { this.pinTouched.delete(pin); this.fire('pin:' + pin); this.fire('pin:' + pin + ':released'); }
   }
   gesture(g: string) { this.fire('gesture:' + g); }
@@ -421,7 +422,7 @@ export class MicrobitRuntime {
       analogReadPin: (p: string) => rt.bridge.analogRead(p),
       servoWritePin: (p: string, a: number) => servoAngle(p, a),
       servoSetPulse: (p: string, us: number) => servoAngle(p, ((us - 600) / 1800) * 180),
-      analogSetPeriod: () => {}, setPull: () => {}, setEvents: () => {}, setAudioPin: () => {},
+      analogSetPeriod: () => {}, setPull: () => {}, touchSetMode: () => {}, setEvents: () => {}, setAudioPin: () => {},
       map: (v: number, fl: number, fh: number, tl: number, th: number) => ((v - fl) * (th - tl)) / (fh - fl) + tl,
       onPulsed: () => {}, pulseIn: () => 0, analogPitch: async (f: number, ms: number) => rt.tone(f, ms),
     };
@@ -521,6 +522,7 @@ export class MicrobitRuntime {
       Gesture: enumOf(['Shake', 'LogoUp', 'LogoDown', 'ScreenUp', 'ScreenDown', 'TiltLeft', 'TiltRight', 'FreeFall', 'ThreeG', 'SixG', 'EightG']),
       TouchButtonEvent: enumOf(['Pressed', 'Touched', 'Released', 'LongPressed']),
       TouchPin: enumOf(['P0', 'P1', 'P2']),
+      TouchTarget: enumOf(['P0', 'P1', 'P2', 'LOGO']), TouchTargetMode: enumOf(['Capacitive', 'Resistive']),
       DigitalPin: enumOf(pinNames), AnalogPin: enumOf(pinNames), AnalogReadWritePin: enumOf(pinNames),
       PinPullMode: enumOf(['PullNone', 'PullUp', 'PullDown']), PinEventType: enumOf(['Edge', 'Pulse', 'Touch', 'None']),
       Dimension: enumOf(['X', 'Y', 'Z', 'Strength']), Rotation: enumOf(['Pitch', 'Roll']),

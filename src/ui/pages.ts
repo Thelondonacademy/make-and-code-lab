@@ -122,6 +122,7 @@ export function creditsPage(): HTMLElement {
       <li>Icone <b>Phosphor</b> (MIT).</li>
       <li>Icone dei progetti da <b>game-icons.net</b> (CC BY 3.0) di Lorc, Delapouite e altri autori.</li>
       <li>Carattere <b>Lexend</b> (SIL Open Font License).</li>
+      <li>Il progetto <b>Luna che scodinzola</b> si ispira al <b>Paper Pet</b> di OKdo. Luna, i suoi disegni e le sagome sono nostri e originali.</li>
     </ul></div>
     <div class="box"><h2>Privacy</h2><p>Il laboratorio salva i tuoi progetti solo in questo browser. Non ci sono account e non mandiamo dati a nessuno. MakeCode viene caricato dai server di Microsoft.</p></div>
     <p><a class="btn" href="https://github.com/Thelondonacademy/make-and-code-lab" target="_blank" rel="noopener">${icon('ph:code-bold', 20)}Il codice su GitHub</a></p>

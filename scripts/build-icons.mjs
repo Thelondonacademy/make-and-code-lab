@@ -8,7 +8,7 @@ const G = require('@iconify-json/game-icons/icons.json');
 const F = require('@iconify-json/fluent-emoji-flat/icons.json');
 
 const ph = ['play-fill','stop-fill','speaker-high-fill','arrow-counter-clockwise-bold','arrow-clockwise-bold','magnifying-glass-plus-bold','magnifying-glass-minus-bold','check-bold','lock-simple-fill','warning-fill','x-bold','flag-fill','shield-check-fill','user-fill','users-fill','warning-octagon-fill','scissors-fill','plugs-connected-fill','puzzle-piece-fill','chalkboard-teacher-fill','question-fill','arrow-left-bold','arrow-right-bold','shopping-bag-fill','trash-fill','arrow-u-up-left-bold','house-fill','usb-fill','download-simple-bold','sun-fill','thermometer-fill','hand-tap-fill','vibrate-fill','info-fill','gear-six-fill','code-bold','eye-fill','sparkle-fill','lightbulb-fill','cube-fill'];
-const gi = ['heart-beats','footprint','moon','rock','lightning-electron','wire-coil','banana','walkie-talkie','open-treasure-chest','sitting-dog','milk-carton','catapult','tv-remote','race-car','radar-sweep','podium-winner'];
+const gi = ['heart-beats','footprint','moon','rock','lightning-electron','wire-coil','banana','walkie-talkie','open-treasure-chest','sitting-dog','milk-carton','catapult','tv-remote','race-car','radar-sweep','podium-winner','labrador-head'];
 const close = s => s.replace(/<(\w+)([^>]*?)\/>/g, '<$1$2></$1>');
 const out = {};
 for (const n of ph) { const i = P.icons[n]; if (!i) throw new Error('ph ' + n); out['ph:' + n] = { w: i.width || P.width, h: i.height || P.height, b: close(i.body) }; }

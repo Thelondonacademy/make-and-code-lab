@@ -256,3 +256,50 @@ input.onButtonPressed(Button.A, function () { servos.P0.setAngle(20) })`);
     try { transpile('basic.showNumber(1 2)'); } catch (e: any) { expect(e.message).not.toMatch(/Unexpected|expected/); }
   });
 });
+
+describe('Luna, il cagnolino di carta', () => {
+  it('il cavo USB accende il micro:bit', () => {
+    const parts = [P('mb', 'microbit'), P('pc', 'usb')];
+    expect(analyze(parts, []).powered.size).toBe(0);
+    expect(analyze(parts, [W('pc:USBPLUG', 'mb:USB')]).powered.has('mb')).toBe(true);
+    expect(ids(parts, [])).toContain('microbit-off');
+  });
+  it('ogni spina va solo nella sua presa', () => {
+    const parts = [P('mb', 'microbit'), P('pc', 'usb'), P('bat', 'battery')];
+    expect(canConnect(parts, [], 'pc:USBPLUG', 'mb:BAT')).toMatch(/USB/);
+    expect(canConnect(parts, [], 'bat:PLUG', 'mb:USB')).toBeTruthy();
+    expect(canConnect(parts, [], 'pc:USBPLUG', 'mb:USB')).toBeNull();
+    expect(canConnect(parts, [], 'bat:PLUG', 'mb:BAT')).toBeNull();
+  });
+  it('USB e pile insieme: nessun errore', () => {
+    const parts = [P('mb', 'microbit'), P('pc', 'usb'), P('bat', 'battery')];
+    const a = analyze(parts, [W('pc:USBPLUG', 'mb:USB'), W('bat:PLUG', 'mb:BAT')]);
+    expect(a.powered.has('mb')).toBe(true);
+    expect(a.issues.filter(i => i.level === 'error')).toEqual([]);
+  });
+  it('la stagnola collegata al pin 1 è nella stessa rete', () => {
+    const parts = [P('mb', 'microbit'), P('f', 'foilPatch')];
+    expect(analyze(parts, [W('f:F', 'mb:P1')]).nets.same('f:F', 'mb:P1')).toBe(true);
+  });
+  it('accarezzare la stagnola fa scodinzolare la coda', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('paperpet')!.code.replace(/pause\(300\)/g, 'pause(20)'));
+    await wait(60);
+    expect(f.servo.filter(s => s[1] !== null).map(s => s[1])).toEqual([90]);
+    rt.touchPin('P1', true);
+    await wait(120);
+    rt.touchPin('P1', false);
+    await wait(60);
+    const n = f.servo.length;
+    await wait(80);
+    expect(f.servo.length).toBe(n); // tolta la mano, si ferma
+    const angles = f.servo.slice(1).map(s => s[1]);
+    expect(angles).toContain(60);
+    expect(angles).toContain(120);
+    expect(rt.stats.pins.has('P1')).toBe(true);
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  });
+});

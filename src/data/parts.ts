@@ -10,6 +10,7 @@ export interface TerminalDef {
   label: string;      // come lo chiamiamo con i bambini
   kind: TerminalKind;
   color?: string;     // colore del filo (servo, LED)
+  fits?: string;      // per le spine: in quale presa entra
   pos: [number, number, number]; // posizione nel pezzo (cm)
 }
 
@@ -29,6 +30,7 @@ export interface PartDef {
   safety?: Safety;       // etichetta mostrata nella tavolozza
   terminals: TerminalDef[];
   material?: boolean;    // materiale di riciclo: si può attaccare al braccio del servo
+  mountOn?: 'horn' | 'petBody'; // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
   tool?: boolean;        // attrezzo: solo scheda, non va sul banco
   size: [number, number, number]; // ingombro (cm) per posizionare e trascinare
   card: CardText;
@@ -58,6 +60,7 @@ export const PARTS: Record<string, PartDef> = {
       { id: '3V', label: '3V', kind: 'pad', pos: [1.6, MB.h, padZ] },
       { id: 'GND', label: 'GND', kind: 'pad', pos: [3.1, MB.h, padZ] },
       { id: 'BAT', label: 'presa delle pile', kind: 'socket', pos: [1.6, MB.h + 0.35, -MB.d / 2 + 0.5] },
+      { id: 'USB', label: 'presa USB', kind: 'socket', pos: [-1.4, MB.h + 0.3, -MB.d / 2 + 0.45] },
     ],
     card: {
       cosa: 'È il cervello del robot. È un piccolo computer.',
@@ -74,7 +77,7 @@ export const PARTS: Record<string, PartDef> = {
   battery: {
     type: 'battery', name: 'Pile 2×AAA', category: 'energia', icon: 'battery.svg', safety: 'adulto',
     size: [7, 2.2, 3.8],
-    terminals: [{ id: 'PLUG', label: 'spina', kind: 'plug', pos: [3.9, 0.9, 0] }],
+    terminals: [{ id: 'PLUG', label: 'spina', kind: 'plug', fits: 'BAT', pos: [3.9, 0.9, 0] }],
     card: {
       cosa: 'Le pile danno l\'energia. Senza energia il micro:bit dorme.',
       come: [
@@ -86,8 +89,23 @@ export const PARTS: Record<string, PartDef> = {
       mondo: 'un portapile per 2 pile AAA con la spina, e 2 pile AAA',
     },
   },
+  usb: {
+    type: 'usb', name: 'Computer e cavo USB', category: 'energia', icon: 'usb-laptop.svg', safety: 'adulto',
+    size: [10, 6, 7],
+    terminals: [{ id: 'USBPLUG', label: 'cavo USB', kind: 'plug', fits: 'USB', pos: [5.6, 0.4, 1.5] }],
+    card: {
+      cosa: 'Il computer manda il programma al micro:bit e gli dà l\'energia con il cavo USB.',
+      come: [
+        'Il cavo USB va nella presa piccola in alto sul micro:bit.',
+        'Con il cavo attaccato non servono le pile.',
+      ],
+      sicurezza: [['adulto', 'Attaccare e staccare il cavo USB.'], ['solo', 'Programmare con i blocchi.']],
+      attenzione: 'Tira il cavo dalla spina, mai dal filo.',
+      mondo: 'un computer e un cavo micro USB',
+    },
+  },
   servo: {
-    type: 'servo', name: 'Servo', category: 'movimento', icon: 'servo.svg',
+    type: 'servo', name: 'Servo', category: 'movimento', icon: 'servo.svg', mountOn: 'petBody',
     size: [4.8, 4.6, 1.9],
     terminals: [
       { id: 'GND', label: 'filo marrone', kind: 'lead', color: '#7A4A22', pos: [-4.4, 0.25, 0.75] },
@@ -201,6 +219,67 @@ export const PARTS: Record<string, PartDef> = {
       mondo: 'un foglio di carta stagnola',
     },
   },
+  petBody: {
+    type: 'petBody', name: 'Corpo di Luna', category: 'materiali', icon: 'luna.svg', material: true,
+    size: [7, 7.5, 13.5], terminals: [],
+    card: {
+      cosa: 'Il corpo di carta di Luna. Dentro ci va il servo che muove la coda.',
+      come: ['Lo stampi, lo ritagli e lo pieghi lungo le righe.', 'Sulla discesa c\'è una finestra: lì esce il braccio del servo.', 'Dietro c\'è un buco per far uscire i cavi.'],
+      sicurezza: [['solo', 'Piegare e incollare con la colla stick.'], ['soloAdulto', 'Ritagliare la finestra del servo con il taglierino.']],
+      mondo: 'la sagoma di Luna stampata su un cartoncino leggero',
+    },
+  },
+  petLegs: {
+    type: 'petLegs', name: 'Zampe di Luna', category: 'materiali', icon: 'luna-paw.svg', material: true, mountOn: 'petBody',
+    size: [5.6, 0.3, 4.6], terminals: [],
+    card: {
+      cosa: 'Quattro zampe di carta. Si incollano sotto la pancia.',
+      come: ['Due zampe davanti e due dietro.', 'Trascinale sul corpo di Luna: si attaccano da sole.'],
+      sicurezza: [['solo', 'Ritagliare e incollare.']],
+      mondo: 'le zampe della sagoma, forbici e colla stick',
+    },
+  },
+  petFace: {
+    type: 'petFace', name: 'Faccia di Luna', category: 'materiali', icon: 'luna.svg', material: true, mountOn: 'petBody',
+    size: [4, 4, 0.3], terminals: [],
+    card: {
+      cosa: 'La faccia di Luna. Puoi usare quella a colori o colorarla tu.',
+      come: ['Si incolla sul davanti del corpo.', 'Trascinala sul corpo di Luna: si attacca da sola.'],
+      sicurezza: [['solo', 'Colorare, ritagliare e incollare.']],
+      mondo: 'la faccia della sagoma, pennarelli, forbici e colla stick',
+    },
+  },
+  petTail: {
+    type: 'petTail', name: 'Coda di Luna', category: 'materiali', icon: 'luna-tail.svg', material: true, mountOn: 'horn',
+    size: [3, 0.3, 5], terminals: [],
+    card: {
+      cosa: 'La coda di carta. Ha una tasca che si infila sul braccio del servo.',
+      come: ['Quando il servo gira, la coda scodinzola!', 'Trascinala sul braccio bianco del servo.'],
+      sicurezza: [['solo', 'Ritagliare la coda e piegare la tasca.']],
+      mondo: 'la coda della sagoma, forbici e un po\' di colla',
+    },
+  },
+  foilPatch: {
+    type: 'foilPatch', name: 'Stagnola', category: 'materiali', icon: 'foil.svg', material: true, mountOn: 'petBody',
+    size: [5.2, 0.2, 3],
+    terminals: [{ id: 'F', label: 'stagnola', kind: 'pad', pos: [2.9, 0.12, 0] }],
+    card: {
+      cosa: 'Un pezzo di carta stagnola. È di metallo: lascia passare l\'elettricità.',
+      come: ['La incolli sulla schiena di Luna e la colleghi al pin 1 con un coccodrillo.', 'Quando la tocchi, il micro:bit lo sente: è un pulsante fatto in casa!'],
+      sicurezza: [['solo', 'Ritagliare un pezzo da 3,5 × 2 cm e incollarlo.']],
+      mondo: 'carta stagnola (oppure nastro di rame) e un cavo a coccodrillo',
+    },
+  },
+  glueStick: {
+    type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
+    size: [0, 0, 0], terminals: [],
+    card: {
+      cosa: 'La colla stick e il nastro adesivo tengono insieme la carta.',
+      come: ['Metti la colla solo sulle linguette gialle.', 'Tieni premuto qualche secondo finché non si attacca.'],
+      sicurezza: [['solo', 'Usare la colla stick e il nastro.']],
+      mondo: 'una colla stick e un rotolo di nastro adesivo',
+    },
+  },
   scissors: {
     type: 'scissors', name: 'Forbici', category: 'attrezzi', icon: 'scissors.svg', safety: 'adulto', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -224,7 +303,10 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'servo', 'led', 'resistor', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+
+/** Dove si attacca un pezzo trascinato sopra un altro. */
+export const mountOf = (type: string): 'horn' | 'petBody' | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
 
 export const SAFETY_LABEL: Record<Safety, string> = { solo: 'Da solo', adulto: 'Con un adulto', soloAdulto: "Solo l'adulto" };
 

@@ -75,9 +75,13 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
     const [pb, tb] = w.b.split(':');
     if (!byId.has(pa) || !byId.has(pb)) continue;
     const A = byId.get(pa)!, B = byId.get(pb)!;
-    // spina delle pile nella presa del micro:bit
-    if ((A.type === 'battery' && ta === 'PLUG' && B.type === 'microbit' && tb === 'BAT')) { powered.add(B.id); continue; }
-    if ((B.type === 'battery' && tb === 'PLUG' && A.type === 'microbit' && ta === 'BAT')) { powered.add(A.id); continue; }
+    // spina delle pile o cavo USB nella presa del micro:bit: lo accendono
+    const plug = (P: PartInst, t: string, Q: PartInst, u: string) => {
+      const def = PARTS[P.type]?.terminals.find(x => x.id === t);
+      return def?.kind === 'plug' && Q.type === 'microbit' && def.fits === u;
+    };
+    if (plug(A, ta, B, tb)) { powered.add(B.id); continue; }
+    if (plug(B, tb, A, ta)) { powered.add(A.id); continue; }
     nets.join(w.a, w.b);
     paths.join(w.a, w.b);
   }
@@ -102,10 +106,13 @@ export function analyze(parts: PartInst[], wires: Wire[]): Analysis {
   for (const mb of microbits) {
     if (!powered.has(mb)) {
       const bat = parts.find(p => p.type === 'battery');
+      const usb = parts.find(p => p.type === 'usb');
       add({
         id: 'microbit-off', level: 'error', title: 'Il micro:bit è spento',
-        text: bat ? 'Collega la spina delle pile alla presa in alto del micro:bit.' : 'Mettigli le pile: trovi il portapile tra i pezzi, nella famiglia Energia.',
-        refs: [ref(mb, 'BAT'), ...(bat ? [ref(bat.id, 'PLUG')] : [])],
+        text: usb ? 'Collega il cavo USB del computer alla presa piccola in alto del micro:bit.'
+          : bat ? 'Collega la spina delle pile alla presa in alto del micro:bit.'
+            : 'Dagli energia: prendi le pile o il computer con il cavo USB, nella famiglia Energia.',
+        refs: usb ? [ref(mb, 'USB'), ref(usb.id, 'USBPLUG')] : bat ? [ref(mb, 'BAT'), ref(bat.id, 'PLUG')] : [ref(mb, 'BAT')],
       });
     }
   }
@@ -173,11 +180,16 @@ export function canConnect(parts: PartInst[], wires: Wire[], a: string, b: strin
   if (pa === pb) return 'Un filo tra due punti dello stesso pezzo non serve.';
   const A = parts.find(p => p.id === pa), B = parts.find(p => p.id === pb);
   if (!A || !B) return 'Questo pezzo non c\'è più.';
-  const kA = PARTS[A.type].terminals.find(t => t.id === ta)?.kind;
-  const kB = PARTS[B.type].terminals.find(t => t.id === tb)?.kind;
+  const dA = PARTS[A.type].terminals.find(t => t.id === ta);
+  const dB = PARTS[B.type].terminals.find(t => t.id === tb);
+  const kA = dA?.kind, kB = dB?.kind;
   const plugA = kA === 'plug' || kA === 'socket', plugB = kB === 'plug' || kB === 'socket';
   if (plugA || plugB) {
-    if (!((kA === 'plug' && kB === 'socket') || (kA === 'socket' && kB === 'plug'))) return 'La spina delle pile entra solo nella presa in alto del micro:bit.';
+    const plugDef = kA === 'plug' ? dA : kB === 'plug' ? dB : null;
+    const sockId = kA === 'socket' ? ta : kB === 'socket' ? tb : null;
+    const what = plugDef?.fits === 'USB' ? 'Il cavo USB entra solo nella presa USB in alto del micro:bit.' : 'La spina delle pile entra solo nella presa delle pile in alto del micro:bit.';
+    if (!plugDef || !sockId) return plugDef ? what : 'Qui va una spina: le pile o il cavo USB.';
+    if (plugDef.fits !== sockId) return what;
     const used = wires.some(w => w.a === a || w.b === a || w.a === b || w.b === b);
     if (used) return 'Questa presa è già occupata.';
     return null;

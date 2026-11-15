@@ -44,7 +44,7 @@ export interface Level {
   namespaces: string[];  // categorie di blocchi visibili in MakeCode
   dependencies: Record<string, string>;
   steps: Step[];
-  real: { materials: string[]; safety: [string, string][] };
+  real: { materials: string[]; safety: [string, string][]; printable?: { label: string; file: string } };
 }
 
 export interface LessonDef {
@@ -55,6 +55,10 @@ export interface LessonDef {
 
 const has = (c: LevelCtx, type: string) => c.parts.some(p => p.type === type);
 const powered = (c: LevelCtx) => c.analysis.powered.size > 0;
+const foilOn = (c: LevelCtx, pin: string) => {
+  const f = c.parts.find(p => p.type === 'foilPatch');
+  return !!f && c.parts.some(mb => mb.type === 'microbit' && c.analysis.nets.same(`${f.id}:F`, `${mb.id}:${pin}`));
+};
 const servoOk = (c: LevelCtx) => c.analysis.servos.some(s => s.powered && s.grounded && s.sig?.pin === 'P0');
 
 export const LEVELS: Level[] = [
@@ -161,13 +165,126 @@ input.onButtonPressed(Button.A, function () {
       safety: [['soloAdulto', 'La colla a caldo la usa solo l\'adulto.'], ['adulto', 'Il taglio del cartone si fa con un adulto.'], ['solo', 'Attacca i coccodrilli ai fili del servo.']],
     },
   },
+  {
+    id: 'paperpet',
+    lesson: 4,
+    title: 'Luna che scodinzola',
+    icon: 'gi:labrador-head',
+    intro: 'Luna è un cagnolino di carta. Accarezzale la schiena: muove la coda!',
+    palette: ['microbit', 'usb', 'battery', 'servo', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'glueStick', 'scissors'],
+    start: {
+      parts: [
+        { id: 'mb1', type: 'microbit', x: -12, z: 6, rot: 0 },
+        { id: 'pc1', type: 'usb', x: -24, z: -6, rot: 0 },
+      ],
+      wires: [],
+    },
+    code: `pins.touchSetMode(TouchTarget.P1, TouchTargetMode.Capacitive)
+servos.P0.setAngle(90)
+input.onButtonPressed(Button.A, function () {
+    servos.P0.setAngle(90)
+})
+basic.forever(function () {
+    while (input.pinIsPressed(TouchPin.P1)) {
+        servos.P0.setAngle(60)
+        basic.pause(300)
+        servos.P0.setAngle(120)
+        basic.pause(300)
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'loops', 'logic', 'servos'],
+    dependencies: { core: '*', servo: '*' },
+    steps: [
+      {
+        title: 'Il corpo di Luna', mode: 'build', text: 'Trascina il corpo di carta sul banco. Nel mondo vero lo ritagli e lo pieghi.',
+        goal: c => has(c, 'petBody'),
+        why: { q: 'Come si fa il corpo vero?', a: 'Stampi la sagoma. Tagli sulle righe piene. Pieghi sulle righe a puntini. Poi incolli le linguette.' },
+      },
+      {
+        title: 'Il motore nella pancia', mode: 'build', text: 'Trascina il servo sopra il corpo di Luna. Entra da solo nella finestrella.',
+        goal: c => c.parts.some(p => p.type === 'servo' && !!p.attachedTo && c.parts.find(b => b.id === p.attachedTo)?.type === 'petBody'),
+        why: { q: 'Perché il servo sta dentro?', a: 'Così il braccio bianco esce dalla schiena. Lì metteremo la coda.' },
+      },
+      {
+        title: 'Collega il servo', mode: 'wire', text: 'I 3 fili escono dal buco dietro. Tocca la fine di un filo, poi il suo posto sul micro:bit.',
+        goal: c => {
+          const s = c.parts.find(p => p.type === 'servo');
+          return !!s && c.parts.some(mb => mb.type === 'microbit' && [['GND', 'GND'], ['VCC', '3V'], ['SIG', 'P0']].every(([t, d]) => c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${d}`)));
+        },
+        checklist: c => {
+          const s = c.parts.find(p => p.type === 'servo');
+          const mb = c.parts.find(p => p.type === 'microbit');
+          const ok = (t: string, target: string) => !!s && !!mb && c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${target}`);
+          return [
+            { label: 'Marrone → GND', color: '#7A4A22', done: ok('GND', 'GND') },
+            { label: 'Rosso → 3V', color: '#E5484D', done: ok('VCC', '3V') },
+            { label: 'Arancione → pin 0', color: '#F7941D', done: ok('SIG', 'P0') },
+          ];
+        },
+        why: { q: 'Perché 3 fili?', a: 'Rosso e marrone portano l\'energia. L\'arancione porta il messaggio: "gira!"' },
+      },
+      {
+        title: 'Dai energia', mode: 'wire', text: 'Collega il computer con il cavo USB. Oppure usa le pile. Tocca la spina, poi la sua presa sul micro:bit.',
+        goal: c => servoOk(c),
+        why: { q: 'USB o pile?', a: 'Tutte e due vanno bene. Il cavo USB dà energia e porta il codice. Le pile servono quando Luna gira libera.' },
+      },
+      {
+        title: 'Raddrizza il servo', mode: 'code', text: 'Premi Prova! Il servo va dritto, a 90. Così la coda parte dal centro.',
+        goal: c => c.running && !!c.stats && c.stats.servoWrites > 0,
+        why: { q: 'Perché prima dritto?', a: 'Se il braccio parte storto, la coda sbatte da una parte sola. Dritto, scodinzola bene da tutte e due.' },
+      },
+      {
+        title: 'Zampe, faccia e coda', mode: 'build', text: 'Trascina le zampe e la faccia sul corpo. Poi la coda sopra il braccio bianco del servo.',
+        goal: c => {
+          const body = c.parts.find(p => p.type === 'petBody');
+          const on = (t: string) => !!body && c.parts.some(p => p.type === t && p.attachedTo === body.id);
+          return on('petLegs') && on('petFace') && c.parts.some(p => p.type === 'petTail' && c.parts.find(s => s.id === p.attachedTo)?.type === 'servo');
+        },
+        checklist: c => {
+          const body = c.parts.find(p => p.type === 'petBody');
+          const on = (t: string) => !!body && c.parts.some(p => p.type === t && p.attachedTo === body.id);
+          return [
+            { label: 'Zampe', done: on('petLegs') },
+            { label: 'Faccia', done: on('petFace') },
+            { label: 'Coda sul servo', done: c.parts.some(p => p.type === 'petTail' && c.parts.find(s => s.id === p.attachedTo)?.type === 'servo') },
+          ];
+        },
+        why: { q: 'Come sta su la coda vera?', a: 'La coda ha una linguetta. La pieghi e la chiudi con un po\' di colla: diventa una tasca. La tasca si infila sul braccio del servo.' },
+      },
+      {
+        title: 'La stagnola sulla schiena', mode: 'build', text: 'Trascina la stagnola sulla schiena di Luna. Lì la accarezzerai.',
+        goal: c => c.parts.some(p => p.type === 'foilPatch' && c.parts.find(b => b.id === p.attachedTo)?.type === 'petBody'),
+        why: { q: 'Perché la stagnola?', a: 'La stagnola è metallo: fa passare l\'elettricità. Il micro:bit sente quando la tocchi.' },
+      },
+      {
+        title: 'Collega la stagnola', mode: 'wire', text: 'Tocca il cerchietto sulla stagnola. Poi tocca il pin 1 del micro:bit.',
+        goal: c => foilOn(c, 'P1'),
+        checklist: c => [{ label: 'Stagnola → pin 1', color: '#F5C400', done: foilOn(c, 'P1') }],
+      },
+      {
+        title: 'Accarezza Luna', mode: 'code', text: 'Premi Prova! Poi tieni premuto il pulsante Accarezza, o tocca la stagnola sulla schiena.',
+        goal: c => c.running && !!c.stats && c.stats.pins.has('P1') && c.servoMoves >= 2,
+        why: { q: 'Cosa fa "mentre"?', a: 'Ripete i blocchi dentro finché tocchi la stagnola. Quando togli la mano, si ferma.' },
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Luna è contenta: falla scodinzolare più veloce. Metti un numero più piccolo nelle pause. Poi premi Prova! e accarezzala.',
+        goal: c => c.runInStep && pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 && !!c.stats && c.stats.pins.has('P1') && c.servoMoves >= 2,
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2', 'il cavo USB, oppure 2 pile AAA con il portapile', 'un servo SG90 con il braccio lungo', '4 cavi a coccodrillo', 'la sagoma di Luna stampata su cartoncino', 'stagnola, circa 3,5 x 2 cm', 'colla stick o nastro adesivo', 'forbici'],
+      printable: { label: 'Scarica le sagome di Luna (PDF)', file: 'paper-pet/luna-sagome.pdf' },
+      safety: [['adulto', 'La finestrella del servo è piccola: tagliala con un adulto.'], ['solo', 'Ritaglia, piega e incolla con la colla stick.'], ['solo', 'Attacca i coccodrilli ai fili del servo e alla stagnola.']],
+    },
+  },
 ];
 
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi' }, { icon: 'gi:moon', title: 'La luce notturna' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
-  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:sitting-dog', title: 'Il cagnolino che scodinzola', level: 'cagnolino' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
+  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:sitting-dog', title: 'Il cagnolino che scodinzola', level: 'cagnolino' }, { icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },
   { n: 6, title: 'Il robot intelligente', projects: [{ icon: 'gi:radar-sweep', title: 'Il robot che evita i muri' }, { icon: 'gi:podium-winner', title: 'La grande Expo' }] },
 ];

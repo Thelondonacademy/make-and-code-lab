@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PARTS } from '../data/parts';
 import type { PartInst, Wire } from '../sim/circuit';
-import { buildPart, attachPose, Built, mat, COLORS } from './builders';
-import { WIRE_COLORS } from '../data/parts';
+import { buildPart, attachPose, bodyPose, petLeadEnds, Built, mat, COLORS } from './builders';
+import { WIRE_COLORS, mountOf } from '../data/parts';
 
 export type SceneMode = 'build' | 'wire' | 'code';
 
@@ -17,6 +17,7 @@ export interface SceneCallbacks {
   onButton(name: 'A' | 'B', down: boolean): void;
   onLogo(down: boolean): void;
   onPad(pin: string, down: boolean): void;
+  onFoil(partId: string, down: boolean): void;
   onFrame(dt: number): void;
   onDrop(type: string, x: number, z: number): void;
 }
@@ -52,7 +53,7 @@ export class Scene3D {
   private tempWire: THREE.Mesh | null = null;
   private down: { x: number; y: number } | null = null;
   private rightDown: { x: number; y: number } | null = null;
-  private pressed: { kind: 'button' | 'logo' | 'pad'; name: string } | null = null;
+  private pressed: { kind: 'button' | 'logo' | 'pad' | 'foil'; name: string } | null = null;
   private clock = new THREE.Timer();
   private raf = 0;
   private disposed = false;
@@ -175,7 +176,10 @@ export class Scene3D {
   setState(parts: PartInst[], wires: Wire[]) {
     const ids = new Set(parts.map(p => p.id));
     for (const [id, o] of this.objs) if (!ids.has(id)) { o.built.group.removeFromParent(); this.objs.delete(id); }
-    const sorted = [...parts].sort((a, b) => Number(!!a.attachedTo) - Number(!!b.attachedTo));
+    // prima chi sta sul banco, poi chi è attaccato (anche a catena: servo nel corpo, coda sul servo)
+    const byId = new Map(parts.map(p => [p.id, p]));
+    const depth = (p: PartInst, n = 0): number => (p.attachedTo && byId.has(p.attachedTo) && n < 5 ? 1 + depth(byId.get(p.attachedTo)!, n + 1) : 0);
+    const sorted = [...parts].sort((a, b) => depth(a) - depth(b));
     for (const p of sorted) {
       let o = this.objs.get(p.id);
       if (!o) {
@@ -217,10 +221,18 @@ export class Scene3D {
   private placeObj(o: PartObj) {
     const p = o.inst;
     const g = o.built.group;
-    const host = p.attachedTo ? this.objs.get(p.attachedTo)?.built.horn : null;
+    const hostObj = p.attachedTo ? this.objs.get(p.attachedTo) : null;
     const inner = g.getObjectByName('straw-inner');
-    if (host) {
-      if (g.parent !== host) host.add(g);
+    const bp = hostObj?.inst.type === 'petBody' ? bodyPose(p.type) : null;
+    const horn = hostObj?.inst.type === 'servo' ? hostObj.built.horn : null;
+    if (p.type === 'servo') this.relead(o, !!bp);
+    o.built.setMounted?.(!!bp);
+    if (bp && hostObj) {
+      if (g.parent !== hostObj.built.group) hostObj.built.group.add(g);
+      g.position.copy(bp.pos);
+      g.quaternion.copy(bp.quat);
+    } else if (horn) {
+      if (g.parent !== horn) horn.add(g);
       const pose = attachPose(p.type);
       g.position.set(...pose.pos);
       g.rotation.set(pose.rotX || 0, 0, pose.rotZ);
@@ -229,13 +241,31 @@ export class Scene3D {
       if (g.parent !== this.scene) this.scene.add(g);
       if (inner) { inner.rotation.set(0, 0, Math.PI / 2); inner.position.set(6.5, 0.35, 0); }
       // rot: giri da 45° attorno all'asse verticale; tilt: pezzo sdraiato su un fianco
-      g.rotation.set(p.tilt ? -Math.PI / 2 : 0, ((p.rot || 0) * Math.PI) / 4, 0, 'YXZ');
+      const flat = p.type === 'petFace' || p.type === 'petTail'; // figurine di carta: sul banco stanno sdraiate
+      g.rotation.set(p.tilt || flat ? -Math.PI / 2 : 0, ((p.rot || 0) * Math.PI) / 4, 0, 'YXZ');
       g.position.set(p.x, 0, p.z);
+      if (flat) { const b = this.ownBox(g); g.position.y = -b.min.y + 0.02; }
       if (p.tilt) {
         const b = this.ownBox(g);
         g.position.y = -b.min.y;
       } else g.position.y = p.y ?? 0;
     }
+  }
+
+  /** Il servo dentro Luna: i 3 fili escono dal buco dietro il corpo. */
+  private relead(o: PartObj, inBody: boolean) {
+    const set = o.built.setLeads;
+    if (!set) return;
+    if (!inBody) {
+      set(null);
+      for (const t of PARTS.servo.terminals) o.terminals.get(t.id)!.position.set(...t.pos);
+      return;
+    }
+    const bp = bodyPose('servo')!;
+    const inv = new THREE.Matrix4().compose(bp.pos, bp.quat, new THREE.Vector3(1, 1, 1)).invert();
+    const ends = petLeadEnds().map(v => v.applyMatrix4(inv));
+    set(ends);
+    PARTS.servo.terminals.forEach((t, i) => o.terminals.get(t.id)!.position.copy(ends[i]));
   }
 
   setServo(id: string, angle: number) {
@@ -366,9 +396,19 @@ export class Scene3D {
       const g = new THREE.Group();
       g.userData.wireId = w.id;
       const sel = w.id === this.selWire;
-      const isPower = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+      const isUsb = w.a.endsWith(':USBPLUG') || w.b.endsWith(':USBPLUG');
+      const isPower = isUsb || w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
       const curve = this.wireCurve(a, b);
-      if (isPower) {
+      if (isUsb) {
+        const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, sel ? 0.2 : 0.14, 6), sel ? this.selMat(0x55585f) : mat(0x55585f));
+        t.castShadow = true;
+        t.userData.wireId = w.id;
+        g.add(t);
+        const plug = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.7), mat(0xc0c4cc, { metalness: 0.6 }));
+        plug.position.copy(w.a.endsWith(':USB') ? a : b).add(new THREE.Vector3(0, 0.45, 0));
+        plug.userData.wireId = w.id;
+        g.add(plug);
+      } else if (isPower) {
         for (const [off, col] of [[0.14, 0xe5484d], [-0.14, 0x1d1c1f]] as const) {
           const pts = curve.getPoints(24).map(p => p.clone().add(new THREE.Vector3(off, 0, off)));
           const t = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, sel ? 0.16 : 0.1, 6), sel ? this.selMat(col) : mat(col));
@@ -488,6 +528,16 @@ export class Scene3D {
     return o ? this.toClient(this.ownBox(o.built.group).getCenter(new THREE.Vector3())) : null;
   }
 
+  /** Un punto dentro un pezzo, anche se attaccato a un altro (per i test e la guida). */
+  objectClient(id: string) {
+    const o = this.objs.get(id);
+    if (!o) return null;
+    const b = new THREE.Box3();
+    o.built.group.updateWorldMatrix(true, true);
+    o.built.group.traverse(c => { if ((c as THREE.Mesh).isMesh && c.userData.partRoot === o.built.group) b.expandByObject(c, false); });
+    return this.toClient(b.getCenter(new THREE.Vector3()));
+  }
+
   hornTipClient(id: string) {
     const horn = this.objs.get(id)?.built.horn;
     if (!horn) return null;
@@ -524,6 +574,8 @@ export class Scene3D {
       if (h?.userData.button) { this.pressed = { kind: 'button', name: h.userData.button }; this.cb.onButton(h.userData.button, true); this.controls.enabled = false; return; }
       if (h?.userData.logo) { this.pressed = { kind: 'logo', name: 'logo' }; this.cb.onLogo(true); this.controls.enabled = false; return; }
       if (h?.userData.pad && ['P0', 'P1', 'P2'].includes(h.userData.pad)) { this.pressed = { kind: 'pad', name: h.userData.pad }; this.cb.onPad(h.userData.pad, true); this.controls.enabled = false; return; }
+      const fid = h?.userData.partId as string | undefined;
+      if (fid && this.objs.get(fid)?.inst.type === 'foilPatch') { this.pressed = { kind: 'foil', name: fid }; this.cb.onFoil(fid, true); this.controls.enabled = false; return; }
       return;
     }
     // in Collega conta il cerchietto più vicino: toccarlo inizia un cavo, trascinarlo sposta la pinza che c'è sopra
@@ -535,7 +587,7 @@ export class Scene3D {
         const w = [...this.wires].reverse().find(x => x.a === ref || x.b === ref);
         if (!w) { this.cb.onTerminal(ref); return; }
         const end: 'a' | 'b' = w.a === ref ? 'a' : 'b';
-        const power = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+        const power = /:(USB)?PLUG$/.test(w.a) || /:(USB)?PLUG$/.test(w.b);
         this.drag = { kind: 'wireEnd', wireId: w.id, end, fixed: this.termWorld(end === 'a' ? w.b : w.a)!, sx: e.clientX, sy: e.clientY, moved: false, color: power ? 'bianco' : w.color, term: ref };
         this.renderer.domElement.setPointerCapture(e.pointerId);
         return;
@@ -553,7 +605,7 @@ export class Scene3D {
           const a = this.termWorld(w.a)!, b = this.termWorld(w.b)!;
           end = wireHit.point.distanceTo(a) < wireHit.point.distanceTo(b) ? 'a' : 'b';
         }
-        const isPower = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+        const isPower = /:(USB)?PLUG$/.test(w.a) || /:(USB)?PLUG$/.test(w.b);
         const fixed = this.termWorld(end === 'a' ? w.b : w.a)!;
         this.drag = { kind: 'wireEnd', wireId: id, end, fixed, sx: e.clientX, sy: e.clientY, moved: false, color: isPower ? 'bianco' : w.color };
         this.controls.enabled = false;
@@ -637,6 +689,7 @@ export class Scene3D {
       if (p.kind === 'button') this.cb.onButton(p.name as 'A' | 'B', false);
       if (p.kind === 'logo') this.cb.onLogo(false);
       if (p.kind === 'pad') this.cb.onPad(p.name, false);
+      if (p.kind === 'foil') this.cb.onFoil(p.name, false);
       return;
     }
     const d = this.drag;
@@ -667,15 +720,7 @@ export class Scene3D {
         } else if (!this.selected.has(id) || this.selected.size !== 1 || this.selWire) this.setSelection([id], null);
         return;
       }
-      let attach: string | null = null;
-      if (d.ids.length === 1 && PARTS[this.objs.get(d.ids[0])!.inst.type].material) {
-        const pos = this.objs.get(d.ids[0])!.built.group.position;
-        for (const s of this.objs.values()) {
-          if (!s.built.horn || s.inst.id === d.ids[0]) continue;
-          const tip = s.built.horn.localToWorld(new THREE.Vector3(1.4, 0, 0));
-          if (Math.hypot(tip.x - pos.x, tip.z - pos.z) < 4.5) { attach = s.inst.id; break; }
-        }
-      }
+      const attach = d.ids.length === 1 ? this.attachTarget(d.ids[0]) : null;
       const moves = d.ids.map(id => { const g = this.objs.get(id)!.built.group.position; return { id, x: round1(g.x), z: round1(g.z) }; });
       this.cb.onMove(moves, attach);
       return;
@@ -684,6 +729,30 @@ export class Scene3D {
       if (this.selected.size || this.selWire) this.setSelection([], null);
     }
   };
+
+  /** Lasciato sopra un altro pezzo, si attacca? (al braccio del servo o al corpo di Luna) */
+  private attachTarget(id: string): string | null {
+    const o = this.objs.get(id);
+    if (!o) return null;
+    const mount = mountOf(o.inst.type);
+    if (!mount) return null;
+    const pos = o.built.group.position;
+    const taken = (host: string, type: string) => [...this.objs.values()].some(x => x.inst.id !== id && x.inst.attachedTo === host && (type === 'servo' ? x.inst.type === 'servo' : x.inst.type === type));
+    if (mount === 'horn') {
+      for (const s of this.objs.values()) {
+        if (!s.built.horn || s.inst.id === id) continue;
+        const tip = s.built.horn.localToWorld(new THREE.Vector3(1.4, 0, 0));
+        if (Math.hypot(tip.x - pos.x, tip.z - pos.z) < 4.5) return s.inst.id;
+      }
+      return null;
+    }
+    for (const b of this.objs.values()) {
+      if (b.inst.type !== 'petBody' || b.inst.attachedTo) continue;
+      const c = this.ownBox(b.built.group).getCenter(new THREE.Vector3());
+      if (Math.hypot(c.x - pos.x, c.z - pos.z) < 7.5 && !taken(b.inst.id, o.inst.type)) return b.inst.id;
+    }
+    return null;
+  }
 
   private onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
