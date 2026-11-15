@@ -1,8 +1,8 @@
 // Pagine: il percorso del corso, la sicurezza, i crediti.
-import { LESSONS, levelById } from '../data/levels';
+import { LESSONS, LEVELS, levelById } from '../data/levels';
 import { icon } from './icons';
 import { el, esc, header, img, safetyTag } from './common';
-import { loadProgress, getName, setName } from '../store';
+import { loadProgress, getName, setName, getUnlockAll, setUnlockAll } from '../store';
 
 const NAV = (page: string) => `<nav class="nav" aria-label="Sezioni">
   <a href="#/" ${page === 'home' ? 'aria-current="page"' : ''}>${icon('ph:flag-fill', 20)}Il percorso</a>
@@ -18,16 +18,27 @@ export function homePage(): HTMLElement {
   const total = Object.values(prog.stars).reduce((a, b) => a + b, 0);
   const done = Object.keys(prog.stars).length;
   const name = getName();
+  const unlockAll = getUnlockAll();
+  // i livelli si aprono in ordine: finisci uno e si apre il successivo
+  const lockedBy = (id: string): string | null => {
+    if (unlockAll) return null;
+    const i = LEVELS.findIndex(l => l.id === id);
+    if (i <= 0) return null;
+    const prev = LEVELS[i - 1];
+    return prog.stars[prev.id] ? null : prev.title;
+  };
   const lessons = LESSONS.map((l, i) => {
-    const playable = l.projects.some(p => p.level);
+    const playable = l.projects.some(p => p.level && !lockedBy(p.level));
     const finished = l.projects.filter(p => p.level).every(p => prog.stars[p.level!]);
-    const status = !playable ? `<span class="status status-soon">${icon('ph:lock-simple-fill', 14)}In arrivo</span>`
+    const status = !playable ? `<span class="status status-soon">${icon('ph:lock-simple-fill', 14)}${l.projects.some(p => p.level) ? 'Bloccata' : 'In arrivo'}</span>`
       : finished ? `<span class="status status-done">${icon('ph:check-bold', 14)}Fatto</span>`
         : `<span class="status status-open">${icon('ph:play-fill', 14)}Aperta</span>`;
     const tiles = l.projects.map(p => {
       const lv = p.level ? levelById(p.level) : null;
       const stars = p.level ? prog.stars[p.level] || 0 : 0;
-      if (!lv) return `<div class="tile tile-lock" aria-disabled="true"><span class="badge" style="background:#E9E4DE;color:#8A847D">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:lock-simple-fill', 14)}Presto</span></div>`;
+      if (!lv) return `<div class="tile tile-lock" aria-disabled="true" title="Questo progetto non è ancora pronto"><span class="badge" style="background:#E9E4DE;color:#8A847D">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:gear-six-fill', 14)}In costruzione</span></div>`;
+      const lock = lockedBy(lv.id);
+      if (lock) return `<div class="tile tile-lock" aria-disabled="true"><span class="badge" style="background:#E9E4DE;color:#8A847D">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:lock-simple-fill', 14)}Prima finisci «${esc(lock)}»</span></div>`;
       return `<a class="tile" href="#/livello/${lv.id}"><span class="badge" style="background:${COLORS[i]}">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span>
         <span class="tile-foot">${stars ? `<span class="mini-stars">${img('star.svg', 18)}${img('star.svg', 18)}${img('star.svg', 18)}</span>` : `<span class="go">Gioca</span>`}</span></a>`;
     }).join('');
@@ -47,12 +58,19 @@ export function homePage(): HTMLElement {
           <p>Ogni progetto lo fai prima qui, sul banco, poi davvero con il cartone e il micro:bit.</p>
           ${name ? '' : `<form class="name-form"><label>Come ti chiami? <input name="n" maxlength="20" autocomplete="off"></label><button class="btn btn-small">Ok</button></form>`}
         </div>
-        <div class="score">${img('star.svg', 36)}<div><b>${total} stelle</b><small>${done} ${done === 1 ? 'progetto finito' : 'progetti finiti'}</small></div></div>
+        <div class="score-col">
+          <div class="score">${img('star.svg', 36)}<div><b>${total} stelle</b><small>${done} ${done === 1 ? 'progetto finito' : 'progetti finiti'}</small></div></div>
+          <button class="btn btn-small btn-unlock" data-unlock="${unlockAll ? '0' : '1'}">${icon(unlockAll ? 'ph:lock-simple-fill' : 'ph:check-bold', 16)}${unlockAll ? 'Blocca di nuovo i livelli' : 'Sblocca tutti i livelli'}</button>
+        </div>
       </div>
       <div class="lessons">${lessons}</div>
       <a class="free" href="#/libero">${img('toolbox.svg', 56)}<div><b>Laboratorio libero</b><span>Inventa il tuo robot con tutti i pezzi.</span></div><span class="btn">Inizia a inventare</span></a>
       <p class="foot">Make &amp; Code Lab è un progetto open source di The London Academy · <a href="https://github.com/Thelondonacademy/make-and-code-lab" target="_blank" rel="noopener">codice su GitHub</a></p>
     </div></div>`);
+  root.querySelector('.btn-unlock')!.addEventListener('click', e => {
+    setUnlockAll((e.currentTarget as HTMLElement).dataset.unlock === '1');
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
   root.querySelector('.name-form')?.addEventListener('submit', e => {
     e.preventDefault();
     const v = (root.querySelector('.name-form input') as HTMLInputElement).value.trim();

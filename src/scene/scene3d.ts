@@ -9,10 +9,11 @@ import { WIRE_COLORS } from '../data/parts';
 export type SceneMode = 'build' | 'wire' | 'code';
 
 export interface SceneCallbacks {
-  onMove(id: string, x: number, z: number, attachTo: string | null): void;
-  onSelect(id: string | null): void;
+  onMove(moves: { id: string; x: number; z: number }[], attachTo: string | null): void;
+  onSelect(ids: string[], wire: string | null, additive: boolean): void;
   onTerminal(ref: string): void;
-  onWire(id: string): void;
+  onWireEnd(wireId: string, end: 'a' | 'b', newRef: string | null): void;
+  onContext(kind: 'part' | 'wire' | 'none', id: string | null, clientX: number, clientY: number): void;
   onButton(name: 'A' | 'B', down: boolean): void;
   onLogo(down: boolean): void;
   onPad(pin: string, down: boolean): void;
@@ -22,8 +23,12 @@ export interface SceneCallbacks {
 
 interface PartObj { inst: PartInst; built: Built; terminals: Map<string, THREE.Object3D> }
 
-const TABLE = { w: 46, d: 30 };
-const HOME_CAM = new THREE.Vector3(0, 34, 30);
+export const TABLE = { w: 84, d: 54 };
+const HOME_CAM = new THREE.Vector3(0, 36, 32);
+
+type Drag =
+  | { kind: 'parts'; ids: string[]; start: Map<string, THREE.Vector3>; startPt: THREE.Vector3; sx: number; sy: number; moved: boolean; additive: boolean }
+  | { kind: 'wireEnd'; wireId: string; end: 'a' | 'b'; fixed: THREE.Vector3; sx: number; sy: number; moved: boolean; color: string; term?: string };
 
 export class Scene3D {
   renderer: THREE.WebGLRenderer;
@@ -37,13 +42,16 @@ export class Scene3D {
   private wireMeshes = new Map<string, THREE.Object3D>();
   private markers = new THREE.Group();
   private highlights: THREE.Mesh[] = [];
+  private selRings = new THREE.Group();
   private pendingRef: string | null = null;
-  private selected: string | null = null;
-  private selRing: THREE.Mesh;
+  private selected = new Set<string>();
+  private selWire: string | null = null;
   private ray = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  private drag: { id: string; offset: THREE.Vector3; startX: number; startY: number; moved: boolean } | null = null;
-  private down: { x: number; y: number; t: number } | null = null;
+  private drag: Drag | null = null;
+  private tempWire: THREE.Mesh | null = null;
+  private down: { x: number; y: number } | null = null;
+  private rightDown: { x: number; y: number } | null = null;
   private pressed: { kind: 'button' | 'logo' | 'pad'; name: string } | null = null;
   private clock = new THREE.Timer();
   private raf = 0;
@@ -62,41 +70,35 @@ export class Scene3D {
     this.renderer.domElement.setAttribute('aria-label', 'Banco di lavoro in 3D');
     this.renderer.domElement.tabIndex = 0;
 
-    this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
+    this.camera = new THREE.PerspectiveCamera(38, 1, 0.5, 600);
     this.camera.position.copy(HOME_CAM);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 0, 1);
     this.controls.enableDamping = true;
-    this.controls.minDistance = 12;
-    this.controls.maxDistance = 90;
+    this.controls.minDistance = 10;
+    this.controls.maxDistance = 140;
     this.controls.maxPolarAngle = 1.38;
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
 
     this.scene.background = new THREE.Color(0xf5f0ea);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xe6ddd2, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.8);
-    sun.position.set(-14, 30, 18);
+    sun.position.set(-20, 40, 26);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera as THREE.OrthographicCamera;
-    sc.left = -30; sc.right = 30; sc.top = 24; sc.bottom = -24;
+    sc.left = -46; sc.right = 46; sc.top = 32; sc.bottom = -32;
     sun.shadow.bias = -0.0005;
-    sun.shadow.radius = 3;
     this.scene.add(sun);
 
     this.scene.add(this.makeTable());
-    this.scene.add(this.wireGroup, this.markers);
-    this.selRing = new THREE.Mesh(new THREE.RingGeometry(1, 1.07, 64), new THREE.MeshBasicMaterial({ color: COLORS.orange, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
-    this.selRing.rotation.x = -Math.PI / 2;
-    this.selRing.position.y = 0.03;
-    this.selRing.visible = false;
-    this.scene.add(this.selRing);
+    this.scene.add(this.wireGroup, this.markers, this.selRings);
 
     const el = this.renderer.domElement;
     el.addEventListener('pointerdown', this.onPointerDown);
     el.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
-    el.addEventListener('contextmenu', e => e.preventDefault());
+    el.addEventListener('contextmenu', this.onContextMenu);
     el.addEventListener('dragover', e => { e.preventDefault(); });
     el.addEventListener('drop', this.onDropEvt);
     new ResizeObserver(() => this.resize()).observe(host);
@@ -118,9 +120,8 @@ export class Scene3D {
     tex.repeat.set(TABLE.w / 4, TABLE.d / 4);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    const top = new THREE.Mesh(new THREE.BoxGeometry(TABLE.w, 1, TABLE.d), [
-      mat(0xd9c7b3), mat(0xd9c7b3), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }), mat(0xd9c7b3), mat(0xd9c7b3), mat(0xd9c7b3),
-    ]);
+    const side = mat(0xd9c7b3);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(TABLE.w, 1, TABLE.d), [side, side, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }), side, side, side]);
     top.position.y = -0.5;
     top.receiveShadow = true;
     top.name = 'table';
@@ -139,7 +140,7 @@ export class Scene3D {
   private loop = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    // tempo vero (anche se il computer è lento il servo gira alla velocità giusta)
+    // tempo vero: anche se il computer è lento il servo gira alla velocità giusta
     this.clock.update();
     const dt = Math.min(0.25, this.clock.getDelta());
     this.cb.onFrame(dt);
@@ -167,14 +168,13 @@ export class Scene3D {
 
   setRunning(r: boolean) {
     this.running = r;
-    if (r) this.select(null);
+    if (r) this.setSelection([], null);
     this.updateMarkers();
   }
 
   setState(parts: PartInst[], wires: Wire[]) {
     const ids = new Set(parts.map(p => p.id));
     for (const [id, o] of this.objs) if (!ids.has(id)) { o.built.group.removeFromParent(); this.objs.delete(id); }
-    // prima i pezzi normali, poi quelli attaccati ai servo
     const sorted = [...parts].sort((a, b) => Number(!!a.attachedTo) - Number(!!b.attachedTo));
     for (const p of sorted) {
       let o = this.objs.get(p.id);
@@ -193,13 +193,25 @@ export class Scene3D {
         this.objs.set(p.id, o);
       }
       o.inst = p;
-      this.placeObj(o);
     }
+    // prima i pezzi sul banco, poi quelli attaccati (così il servo è già al suo posto)
+    for (const p of sorted) this.placeObj(this.objs.get(p.id)!);
     this.wires = wires;
+    for (const id of [...this.selected]) if (!ids.has(id)) this.selected.delete(id);
+    if (this.selWire && !wires.some(w => w.id === this.selWire)) this.selWire = null;
     this.rebuildWires();
     this.updateMarkers();
-    if (this.selected && !ids.has(this.selected)) this.select(null);
-    this.updateSelRing();
+    this.updateSelRings();
+  }
+
+  /** La scatola di un pezzo senza i materiali attaccati al suo braccio. */
+  private ownBox(g: THREE.Object3D) {
+    const box = new THREE.Box3();
+    g.updateWorldMatrix(true, true);
+    g.traverse(o => {
+      if ((o as THREE.Mesh).isMesh && o.userData.partRoot === g) box.expandByObject(o, false);
+    });
+    return box;
   }
 
   private placeObj(o: PartObj) {
@@ -215,9 +227,14 @@ export class Scene3D {
       if (inner) { inner.rotation.set(0, 0, 0); inner.position.set(0, 0, 0); }
     } else {
       if (g.parent !== this.scene) this.scene.add(g);
-      g.position.set(p.x, p.y ?? 0, p.z);
-      g.rotation.set(0, (p.rot || 0) * (Math.PI / 2), 0);
       if (inner) { inner.rotation.set(0, 0, Math.PI / 2); inner.position.set(6.5, 0.35, 0); }
+      // rot: giri da 45° attorno all'asse verticale; tilt: pezzo sdraiato su un fianco
+      g.rotation.set(p.tilt ? -Math.PI / 2 : 0, ((p.rot || 0) * Math.PI) / 4, 0, 'YXZ');
+      g.position.set(p.x, 0, p.z);
+      if (p.tilt) {
+        const b = this.ownBox(g);
+        g.position.y = -b.min.y;
+      } else g.position.y = p.y ?? 0;
     }
   }
 
@@ -252,7 +269,6 @@ export class Scene3D {
     if (btn) btn.position.y = down ? 0.3 : 0.54;
   }
 
-  /** Evidenzia (con un anello che pulsa) i punti dove c'è un problema. */
   highlight(refs: string[]) {
     for (const h of this.highlights) h.removeFromParent();
     this.highlights = [];
@@ -267,31 +283,50 @@ export class Scene3D {
     }
   }
 
-  select(id: string | null) {
-    this.selected = id;
-    this.updateSelRing();
-    this.cb.onSelect(id);
+  /** Cambia la selezione (pezzi oppure un cavo) e avvisa il laboratorio. */
+  setSelection(ids: string[], wire: string | null, notify = true, additive = false) {
+    const changedWire = wire !== this.selWire;
+    this.selected = new Set(ids);
+    this.selWire = wire;
+    if (changedWire) this.rebuildWires();
+    this.updateSelRings();
+    if (notify) this.cb.onSelect([...this.selected], this.selWire, additive);
   }
 
-  private updateSelRing() {
-    const o = this.selected ? this.objs.get(this.selected) : null;
-    if (!o || o.inst.attachedTo) { this.selRing.visible = false; return; }
-    const [w, , d] = PARTS[o.inst.type].size;
-    const r = Math.max(w, d) / 2 + 0.6;
-    this.selRing.scale.set(r, r, 1);
-    this.selRing.position.set(o.inst.x, 0.03, o.inst.z);
-    this.selRing.visible = true;
+  getSelection() { return { ids: [...this.selected], wire: this.selWire }; }
+
+  private updateSelRings() {
+    this.selRings.clear();
+    for (const id of this.selected) {
+      const o = this.objs.get(id);
+      if (!o || o.inst.attachedTo) continue;
+      const b = this.ownBox(o.built.group);
+      const size = b.getSize(new THREE.Vector3());
+      const c = b.getCenter(new THREE.Vector3());
+      const r = Math.max(size.x, size.z) / 2 + 0.6;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.3, 64), new THREE.MeshBasicMaterial({ color: COLORS.orange, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(c.x, 0.03, c.z);
+      this.selRings.add(ring);
+    }
   }
 
-  /** Posizione sullo schermo (px) di un pezzo, per mettere vicino i bottoni. */
-  screenOf(id: string): { x: number; y: number } | null {
-    const o = this.objs.get(id);
-    if (!o) return null;
-    const v = new THREE.Vector3();
-    o.built.group.getWorldPosition(v);
-    v.y += PARTS[o.inst.type].size[1] + 1;
-    v.project(this.camera);
+  /** Posizione sullo schermo (px, dentro il riquadro) sopra il primo pezzo o il cavo selezionato. */
+  selectionAnchor(): { x: number; y: number } | null {
     const r = this.renderer.domElement.getBoundingClientRect();
+    let v: THREE.Vector3 | null = null;
+    if (this.selWire) {
+      const w = this.wires.find(w => w.id === this.selWire);
+      const a = w && this.termWorld(w.a), b = w && this.termWorld(w.b);
+      if (a && b) v = a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, Math.min(6, 1.2 + a.distanceTo(b) * 0.18) * 0.75 + 1, 0));
+    } else if (this.selected.size) {
+      const box = new THREE.Box3();
+      for (const id of this.selected) { const o = this.objs.get(id); if (o) box.union(this.ownBox(o.built.group)); }
+      if (!box.isEmpty()) v = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y + 1, (box.min.z + box.max.z) / 2);
+    }
+    if (!v) return null;
+    v.project(this.camera);
+    if (v.z > 1) return null;
     return { x: ((v.x + 1) / 2) * r.width, y: ((1 - v.y) / 2) * r.height };
   }
 
@@ -310,65 +345,85 @@ export class Scene3D {
 
   // ---------- fili ----------
 
+  private wireCurve(a: THREE.Vector3, b: THREE.Vector3) {
+    const dist = a.distanceTo(b);
+    const lift = Math.min(6, 1.2 + dist * 0.18);
+    return new THREE.CatmullRomCurve3([
+      a.clone().add(new THREE.Vector3(0, 0.3, 0)),
+      a.clone().lerp(b, 0.3).add(new THREE.Vector3(0, lift, 0)),
+      a.clone().lerp(b, 0.7).add(new THREE.Vector3(0, lift, 0)),
+      b.clone().add(new THREE.Vector3(0, 0.3, 0)),
+    ]);
+  }
+
   private rebuildWires() {
     for (const m of this.wireMeshes.values()) m.removeFromParent();
     this.wireMeshes.clear();
     for (const w of this.wires) {
+      if (this.drag?.kind === 'wireEnd' && this.drag.wireId === w.id && this.drag.moved) continue;
       const a = this.termWorld(w.a), b = this.termWorld(w.b);
       if (!a || !b) continue;
       const g = new THREE.Group();
       g.userData.wireId = w.id;
+      const sel = w.id === this.selWire;
       const isPower = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
-      const dist = a.distanceTo(b);
-      const lift = Math.min(6, 1.2 + dist * 0.18);
-      const mid1 = a.clone().lerp(b, 0.3).add(new THREE.Vector3(0, lift, 0));
-      const mid2 = a.clone().lerp(b, 0.7).add(new THREE.Vector3(0, lift, 0));
-      const curve = new THREE.CatmullRomCurve3([a.clone().add(new THREE.Vector3(0, 0.3, 0)), mid1, mid2, b.clone().add(new THREE.Vector3(0, 0.3, 0))]);
+      const curve = this.wireCurve(a, b);
       if (isPower) {
         for (const [off, col] of [[0.14, 0xe5484d], [-0.14, 0x1d1c1f]] as const) {
           const pts = curve.getPoints(24).map(p => p.clone().add(new THREE.Vector3(off, 0, off)));
-          const t = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.1, 6), mat(col));
+          const t = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, sel ? 0.16 : 0.1, 6), sel ? this.selMat(col) : mat(col));
           t.castShadow = true;
           t.userData.wireId = w.id;
           g.add(t);
         }
         const plug = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.5, 0.6), mat(0xf2efea));
-        const sock = w.a.endsWith(':BAT') ? a : b;
-        plug.position.copy(sock).add(new THREE.Vector3(0, 0.55, 0));
+        plug.position.copy(w.a.endsWith(':BAT') ? a : b).add(new THREE.Vector3(0, 0.55, 0));
         plug.userData.wireId = w.id;
         g.add(plug);
       } else {
-        const hex = WIRE_COLORS.find(c => c.id === w.color)?.hex || '#E5484D';
-        const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.16, 8), mat(new THREE.Color(hex).getHex(), { roughness: 0.5 }));
+        const hex = new THREE.Color(WIRE_COLORS.find(c => c.id === w.color)?.hex || '#E5484D').getHex();
+        const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, sel ? 0.24 : 0.16, 8), sel ? this.selMat(hex) : mat(hex, { roughness: 0.5 }));
         t.castShadow = true;
         t.userData.wireId = w.id;
         g.add(t);
-        for (const end of [a, b]) g.add(this.clip(end, hex, w.id));
+        g.add(this.clip(a, hex, w.id, 'a'), this.clip(b, hex, w.id, 'b'));
       }
       this.wireGroup.add(g);
       this.wireMeshes.set(w.id, g);
     }
   }
 
-  /** Pinza a coccodrillo: corpo colorato + becco di metallo. */
-  private clip(at: THREE.Vector3, hex: string, wireId: string) {
+  private selMat(color: number) {
+    return new THREE.MeshStandardMaterial({ color, emissive: COLORS.orange, emissiveIntensity: 0.55, roughness: 0.4 });
+  }
+
+  /** Pinza a coccodrillo: corpo colorato + becco di metallo. Si può prendere e spostare. */
+  private clip(at: THREE.Vector3, hex: number, wireId: string, end: 'a' | 'b') {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.34, 1.0, 10), mat(new THREE.Color(hex).getHex(), { roughness: 0.45 }));
-    body.position.y = 0.95;
-    const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.55, 8), mat(COLORS.metal, { metalness: 0.8, roughness: 0.3 }));
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 1.1, 10), mat(hex, { roughness: 0.45 }));
+    body.position.y = 1.0;
+    const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.55, 8), mat(COLORS.metal, { metalness: 0.8, roughness: 0.3 }));
     jaw.rotation.x = Math.PI;
     jaw.position.y = 0.3;
     g.add(body, jaw);
     g.position.copy(at);
-    g.traverse(o => { o.userData.wireId = wireId; (o as THREE.Mesh).castShadow = true; });
+    g.traverse(o => { o.userData.wireId = wireId; o.userData.wireEnd = end; (o as THREE.Mesh).castShadow = true; });
     return g;
+  }
+
+  private showTempWire(from: THREE.Vector3, to: THREE.Vector3, color: string) {
+    this.tempWire?.removeFromParent();
+    const hex = new THREE.Color(WIRE_COLORS.find(c => c.id === color)?.hex || '#E5484D').getHex();
+    this.tempWire = new THREE.Mesh(new THREE.TubeGeometry(this.wireCurve(from, to), 40, 0.2, 8), new THREE.MeshStandardMaterial({ color: hex, transparent: true, opacity: 0.8 }));
+    this.scene.add(this.tempWire);
   }
 
   // ---------- segnaposto dei morsetti (modalità Collega) ----------
 
   private updateMarkers() {
     this.markers.clear();
-    if (this.mode !== 'wire' || this.running) return;
+    const dragging = this.drag?.kind === 'wireEnd' && this.drag.moved;
+    if ((this.mode !== 'wire' && !dragging) || this.running) return;
     for (const o of this.objs.values()) {
       for (const t of PARTS[o.inst.type].terminals) {
         const ref = `${o.inst.id}:${t.id}`;
@@ -387,28 +442,29 @@ export class Scene3D {
 
   // ---------- puntatore ----------
 
-  private ndc(e: PointerEvent | DragEvent) {
+  private ndc(e: { clientX: number; clientY: number }) {
     const r = this.renderer.domElement.getBoundingClientRect();
     return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   }
 
-  private hit(e: PointerEvent, objects: THREE.Object3D[]) {
+  private hit(e: { clientX: number; clientY: number }, objects: THREE.Object3D[]) {
     this.ray.setFromCamera(this.ndc(e), this.camera);
     return this.ray.intersectObjects(objects, true);
   }
 
-  private onTable(e: PointerEvent | DragEvent) {
+  private onTable(e: { clientX: number; clientY: number }) {
     this.ray.setFromCamera(this.ndc(e), this.camera);
     const p = new THREE.Vector3();
     return this.ray.ray.intersectPlane(this.plane, p) ? p : null;
   }
 
   /** Il morsetto più vicino al puntatore (sullo schermo), per non dover essere precisi. */
-  nearestTerminal(clientX: number, clientY: number, maxPx = 30): string | null {
+  nearestTerminal(clientX: number, clientY: number, maxPx = 30, exclude?: string): string | null {
     const r = this.renderer.domElement.getBoundingClientRect();
     let best: string | null = null, bestD = maxPx;
     for (const o of this.objs.values()) for (const t of PARTS[o.inst.type].terminals) {
       const ref = `${o.inst.id}:${t.id}`;
+      if (ref === exclude) continue;
       const p = this.termWorld(ref);
       if (!p) continue;
       p.project(this.camera);
@@ -419,51 +475,50 @@ export class Scene3D {
     return best;
   }
 
-  /** Coordinate sullo schermo (client) di un morsetto: usate dai test e dalla guida. */
-  terminalClient(ref: string): { x: number; y: number } | null {
-    const p = this.termWorld(ref);
-    if (!p) return null;
+  private toClient(v: THREE.Vector3) {
     const r = this.renderer.domElement.getBoundingClientRect();
-    p.project(this.camera);
+    const p = v.clone().project(this.camera);
     return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
   }
 
-  partClient(id: string): { x: number; y: number } | null {
+  terminalClient(ref: string) { const p = this.termWorld(ref); return p ? this.toClient(p) : null; }
+
+  partClient(id: string) {
     const o = this.objs.get(id);
-    if (!o) return null;
-    const v = new THREE.Box3().setFromObject(o.built.group).getCenter(new THREE.Vector3());
-    v.project(this.camera);
-    const r = this.renderer.domElement.getBoundingClientRect();
-    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    return o ? this.toClient(this.ownBox(o.built.group).getCenter(new THREE.Vector3())) : null;
   }
 
-  hornTipClient(id: string): { x: number; y: number } | null {
+  hornTipClient(id: string) {
     const horn = this.objs.get(id)?.built.horn;
     if (!horn) return null;
-    const v = new THREE.Vector3(2.4, 0, 0);
-    horn.localToWorld(v);
-    v.project(this.camera);
-    const r = this.renderer.domElement.getBoundingClientRect();
-    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    return this.toClient(horn.localToWorld(new THREE.Vector3(2.4, 0, 0)));
   }
 
-  buttonClient(mb: string, name: string): { x: number; y: number } | null {
+  buttonClient(mb: string, name: string) {
     const b = this.objs.get(mb)?.built.buttons?.[name];
-    if (!b) return null;
-    const v = new THREE.Vector3();
-    b.getWorldPosition(v);
-    v.project(this.camera);
-    const r = this.renderer.domElement.getBoundingClientRect();
-    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    return b ? this.toClient(b.getWorldPosition(new THREE.Vector3())) : null;
+  }
+
+  wireClient(id: string) {
+    const w = this.wires.find(x => x.id === id);
+    const a = w && this.termWorld(w.a), b = w && this.termWorld(w.b);
+    if (!a || !b) return null;
+    return this.toClient(this.wireCurve(a, b).getPoint(0.5));
+  }
+
+  clipClient(id: string, end: 'a' | 'b') {
+    const w = this.wires.find(x => x.id === id);
+    const p = w && this.termWorld(end === 'a' ? w.a : w.b);
+    return p ? this.toClient(p.clone().add(new THREE.Vector3(0, 1.0, 0))) : null;
   }
 
   private partObjects() { return [...this.objs.values()].map(o => o.built.group); }
 
   private onPointerDown = (e: PointerEvent) => {
+    if (e.button === 2) { this.rightDown = { x: e.clientX, y: e.clientY }; return; }
     if (e.button !== 0) return;
-    this.down = { x: e.clientX, y: e.clientY, t: performance.now() };
+    this.down = { x: e.clientX, y: e.clientY };
     const hits = this.hit(e, this.partObjects());
-    // durante la prova: pulsanti, logo, pin
     if (this.running) {
       const h = hits[0]?.object;
       if (h?.userData.button) { this.pressed = { kind: 'button', name: h.userData.button }; this.cb.onButton(h.userData.button, true); this.controls.enabled = false; return; }
@@ -471,50 +526,93 @@ export class Scene3D {
       if (h?.userData.pad && ['P0', 'P1', 'P2'].includes(h.userData.pad)) { this.pressed = { kind: 'pad', name: h.userData.pad }; this.cb.onPad(h.userData.pad, true); this.controls.enabled = false; return; }
       return;
     }
-    if (this.mode === 'wire') {
+    // in Collega conta il cerchietto più vicino: toccarlo inizia un cavo, trascinarlo sposta la pinza che c'è sopra
+    const tubeHit = this.hit(e, [this.wireGroup])[0];
+    if (this.mode === 'wire' && !(tubeHit && !tubeHit.object.userData.wireEnd)) {
       const ref = this.nearestTerminal(e.clientX, e.clientY);
-      if (ref) { this.controls.enabled = false; this.cb.onTerminal(ref); return; }
-      const wh = this.hit(e, [this.wireGroup])[0];
-      if (wh) { this.controls.enabled = false; this.cb.onWire(wh.object.userData.wireId); return; }
-      return;
+      if (ref) {
+        this.controls.enabled = false;
+        const w = [...this.wires].reverse().find(x => x.a === ref || x.b === ref);
+        if (!w) { this.cb.onTerminal(ref); return; }
+        const end: 'a' | 'b' = w.a === ref ? 'a' : 'b';
+        const power = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+        this.drag = { kind: 'wireEnd', wireId: w.id, end, fixed: this.termWorld(end === 'a' ? w.b : w.a)!, sx: e.clientX, sy: e.clientY, moved: false, color: power ? 'bianco' : w.color, term: ref };
+        this.renderer.domElement.setPointerCapture(e.pointerId);
+        return;
+      }
     }
-    if (this.mode === 'build' && hits.length) {
+    // un cavo o una pinza a coccodrillo: si seleziona, oppure si trascina su un altro punto
+    const wireHit = this.hit(e, [this.wireGroup])[0];
+    const partDist = hits[0]?.distance ?? Infinity;
+    if (wireHit && wireHit.distance <= partDist + 0.01 && this.mode !== 'code') {
+      const id = wireHit.object.userData.wireId as string;
+      const w = this.wires.find(x => x.id === id);
+      if (w) {
+        let end: 'a' | 'b' | undefined = wireHit.object.userData.wireEnd;
+        if (!end) {
+          const a = this.termWorld(w.a)!, b = this.termWorld(w.b)!;
+          end = wireHit.point.distanceTo(a) < wireHit.point.distanceTo(b) ? 'a' : 'b';
+        }
+        const isPower = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+        const fixed = this.termWorld(end === 'a' ? w.b : w.a)!;
+        this.drag = { kind: 'wireEnd', wireId: id, end, fixed, sx: e.clientX, sy: e.clientY, moved: false, color: isPower ? 'bianco' : w.color };
+        this.controls.enabled = false;
+        this.renderer.domElement.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+    if ((this.mode === 'build' || this.mode === 'wire') && hits.length) {
       const id = hits[0].object.userData.partId as string;
-      const o = this.objs.get(id);
-      if (!o) return;
+      if (!this.objs.has(id)) return;
       const p = this.onTable(e);
       if (!p) return;
-      const wp = new THREE.Vector3();
-      o.built.group.getWorldPosition(wp);
-      this.drag = { id, offset: new THREE.Vector3(wp.x - p.x, 0, wp.z - p.z), startX: e.clientX, startY: e.clientY, moved: false };
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      const ids = this.selected.has(id) && !additive ? [...this.selected] : [id];
+      const start = new Map<string, THREE.Vector3>();
+      for (const i of ids) { const o = this.objs.get(i); if (o) start.set(i, o.built.group.getWorldPosition(new THREE.Vector3())); }
+      this.drag = { kind: 'parts', ids: [...start.keys()], start, startPt: p, sx: e.clientX, sy: e.clientY, moved: false, additive };
       this.controls.enabled = false;
       this.renderer.domElement.setPointerCapture(e.pointerId);
     }
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (this.drag) {
-      const d = this.drag;
-      if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 5) return;
-      const o = this.objs.get(d.id)!;
+    const d = this.drag;
+    if (d?.kind === 'parts') {
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+      if (this.mode !== 'build') return; // in Collega i pezzi non si spostano per sbaglio
       if (!d.moved) {
         d.moved = true;
-        // si stacca dal servo mentre lo trascini
-        if (o.inst.attachedTo) {
-          const wp = new THREE.Vector3();
-          o.built.group.getWorldPosition(wp);
-          this.scene.add(o.built.group);
-          o.built.group.rotation.set(0, 0, 0);
-          const inner = o.built.group.getObjectByName('straw-inner');
-          if (inner) { inner.rotation.set(0, 0, Math.PI / 2); inner.position.set(6.5, 0.35, 0); }
+        for (const id of d.ids) {
+          const o = this.objs.get(id)!;
+          if (o.inst.attachedTo) {
+            this.scene.add(o.built.group);
+            o.built.group.rotation.set(0, 0, 0);
+            const inner = o.built.group.getObjectByName('straw-inner');
+            if (inner) { inner.rotation.set(0, 0, Math.PI / 2); inner.position.set(6.5, 0.35, 0); }
+          }
         }
+        this.selRings.clear();
       }
       const p = this.onTable(e);
       if (!p) return;
-      const x = clamp(p.x + d.offset.x, -TABLE.w / 2 + 2, TABLE.w / 2 - 2);
-      const z = clamp(p.z + d.offset.z, -TABLE.d / 2 + 2, TABLE.d / 2 - 2);
-      o.built.group.position.set(x, 0.6, z);
-      this.selRing.visible = false;
+      const dx = p.x - d.startPt.x, dz = p.z - d.startPt.z;
+      for (const id of d.ids) {
+        const o = this.objs.get(id)!;
+        const s = d.start.get(id)!;
+        o.built.group.position.set(clamp(s.x + dx, -TABLE.w / 2 + 2, TABLE.w / 2 - 2), o.built.group.position.y, clamp(s.z + dz, -TABLE.d / 2 + 2, TABLE.d / 2 - 2));
+      }
+      this.rebuildWires();
+      return;
+    }
+    if (d?.kind === 'wireEnd') {
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+      if (!d.moved) { d.moved = true; this.rebuildWires(); this.updateMarkers(); }
+      const near = this.nearestTerminal(e.clientX, e.clientY, 30);
+      const to = (near && this.termWorld(near)) || this.onTable(e);
+      if (to) this.showTempWire(d.fixed, to, d.color);
+      const r = this.renderer.domElement.getBoundingClientRect();
+      this.onHover(near, e.clientX - r.left, e.clientY - r.top);
       return;
     }
     if (this.mode === 'wire' && !this.running) {
@@ -530,6 +628,9 @@ export class Scene3D {
 
   private onPointerUp = (e: PointerEvent) => {
     this.controls.enabled = true;
+    if (e.button !== 0) return;
+    const down = this.down;
+    this.down = null;
     if (this.pressed) {
       const p = this.pressed;
       this.pressed = null;
@@ -538,29 +639,75 @@ export class Scene3D {
       if (p.kind === 'pad') this.cb.onPad(p.name, false);
       return;
     }
-    if (this.drag) {
-      const d = this.drag;
+    const d = this.drag;
+    if (d?.kind === 'wireEnd') {
       this.drag = null;
-      const o = this.objs.get(d.id);
-      if (!o) return;
-      if (!d.moved) { this.select(d.id); return; }
-      const pos = o.built.group.position;
+      this.tempWire?.removeFromParent();
+      this.tempWire = null;
+      this.onHover(null, 0, 0);
+      if (!d.moved) {
+        // in Collega, toccare un cerchietto con una pinza vuol dire "parti da qui" (più cavi sullo stesso punto)
+        if (d.term) { this.cb.onTerminal(d.term); return; }
+        this.setSelection([], d.wireId); this.rebuildWires(); this.updateMarkers(); return;
+      }
+      const near = this.nearestTerminal(e.clientX, e.clientY, 30);
+      this.rebuildWires();
+      this.updateMarkers();
+      this.cb.onWireEnd(d.wireId, d.end, near);
+      return;
+    }
+    if (d?.kind === 'parts') {
+      this.drag = null;
+      if (!d.moved) {
+        const id = d.ids[0];
+        if (d.additive) {
+          const s = new Set(this.selected);
+          s.has(id) ? s.delete(id) : s.add(id);
+          this.setSelection([...s], null, true, true);
+        } else if (!this.selected.has(id) || this.selected.size !== 1 || this.selWire) this.setSelection([id], null);
+        return;
+      }
       let attach: string | null = null;
-      if (PARTS[o.inst.type].material) {
+      if (d.ids.length === 1 && PARTS[this.objs.get(d.ids[0])!.inst.type].material) {
+        const pos = this.objs.get(d.ids[0])!.built.group.position;
         for (const s of this.objs.values()) {
-          if (!s.built.horn || s.inst.id === d.id) continue;
-          const tip = new THREE.Vector3(1.4, 0, 0);
-          s.built.horn.localToWorld(tip);
+          if (!s.built.horn || s.inst.id === d.ids[0]) continue;
+          const tip = s.built.horn.localToWorld(new THREE.Vector3(1.4, 0, 0));
           if (Math.hypot(tip.x - pos.x, tip.z - pos.z) < 4.5) { attach = s.inst.id; break; }
         }
       }
-      this.cb.onMove(d.id, round1(pos.x), round1(pos.z), attach);
+      const moves = d.ids.map(id => { const g = this.objs.get(id)!.built.group.position; return { id, x: round1(g.x), z: round1(g.z) }; });
+      this.cb.onMove(moves, attach);
       return;
     }
-    if (this.down && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) < 5 && this.mode === 'build' && !this.running) {
-      if (e.target === this.renderer.domElement) this.select(null);
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5 && !this.running && e.target === this.renderer.domElement) {
+      if (this.selected.size || this.selWire) this.setSelection([], null);
     }
-    this.down = null;
+  };
+
+  private onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    const rd = this.rightDown;
+    this.rightDown = null;
+    if (this.running) return;
+    if (rd && Math.hypot(e.clientX - rd.x, e.clientY - rd.y) > 5) return; // era uno spostamento della vista
+    const wh = this.hit(e, [this.wireGroup])[0];
+    const ph = this.hit(e, this.partObjects())[0];
+    if (wh && (!ph || wh.distance <= ph.distance + 0.01)) {
+      const id = wh.object.userData.wireId as string;
+      this.setSelection([], id, false);
+      this.cb.onContext('wire', id, e.clientX, e.clientY);
+      this.cb.onSelect([], id, false);
+      return;
+    }
+    if (ph) {
+      const id = ph.object.userData.partId as string;
+      if (!this.selected.has(id)) this.setSelection([id], null, false);
+      this.cb.onSelect([...this.selected], null, false);
+      this.cb.onContext('part', id, e.clientX, e.clientY);
+      return;
+    }
+    this.cb.onContext('none', null, e.clientX, e.clientY);
   };
 
   private onDropEvt = (e: DragEvent) => {
@@ -568,36 +715,21 @@ export class Scene3D {
     const type = e.dataTransfer?.getData('text/x-part');
     if (!type) return;
     const p = this.onTable(e);
-    if (p) this.cb.onDrop(type, clamp(round1(p.x), -20, 20), clamp(round1(p.z), -13, 13));
+    if (p) this.cb.onDrop(type, clamp(round1(p.x), -TABLE.w / 2 + 3, TABLE.w / 2 - 3), clamp(round1(p.z), -TABLE.d / 2 + 3, TABLE.d / 2 - 3));
   };
 
-  /** Punto del banco sotto una posizione dello schermo (per i test e il trascinamento dalla tavolozza). */
-  tableAt(clientX: number, clientY: number) {
-    return this.onTable({ clientX, clientY } as PointerEvent);
-  }
+  tableAt(clientX: number, clientY: number) { return this.onTable({ clientX, clientY }); }
 
-  // ---------- vista ----------
-
-  zoom(f: number) {
-    const dir = this.camera.position.clone().sub(this.controls.target);
-    const len = clamp(dir.length() * f, this.controls.minDistance, this.controls.maxDistance);
-    this.camera.position.copy(this.controls.target).add(dir.setLength(len));
-  }
-  rotateView() {
-    const dir = this.camera.position.clone().sub(this.controls.target);
-    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
-    this.camera.position.copy(this.controls.target).add(dir);
-  }
-  /** Il pezzo si vede tutto nel riquadro? */
   isVisible(id: string) {
     const o = this.objs.get(id);
     if (!o) return true;
-    const box = new THREE.Box3().setFromObject(o.built.group);
+    const box = this.ownBox(o.built.group);
     const pts = [box.min, box.max, new THREE.Vector3(box.min.x, box.min.y, box.max.z), new THREE.Vector3(box.max.x, box.min.y, box.min.z)];
     return pts.every(p => { const v = p.clone().project(this.camera); return Math.abs(v.x) < 0.92 && Math.abs(v.y) < 0.88; });
   }
 
-  /** Inquadra tutti i pezzi, qualunque sia la forma del riquadro. */
+  // ---------- vista ----------
+
   fit(parts: PartInst[]) {
     const box = new THREE.Box3();
     for (const p of parts) { const o = this.objs.get(p.id); if (o && !p.attachedTo) box.expandByObject(o.built.group); }
@@ -613,7 +745,16 @@ export class Scene3D {
     this.controls.target.set(c.x, 0, c.z);
     this.camera.position.set(c.x, dist * 0.76, c.z + dist * 0.65);
   }
-
+  zoom(f: number) {
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    const len = clamp(dir.length() * f, this.controls.minDistance, this.controls.maxDistance);
+    this.camera.position.copy(this.controls.target).add(dir.setLength(len));
+  }
+  rotateView() {
+    const dir = this.camera.position.clone().sub(this.controls.target);
+    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+    this.camera.position.copy(this.controls.target).add(dir);
+  }
   homeView() {
     this.camera.position.copy(HOME_CAM);
     this.controls.target.set(0, 0, 1);

@@ -19,3 +19,5 @@ export const loadProgress = () => get<Progress>('progress', { stars: {} });
 export const saveStars = (level: string, n: number) => { const p = loadProgress(); p.stars[level] = Math.max(p.stars[level] || 0, n); set('progress', p); };
 export const getName = () => get<string>('name', '');
 export const setName = (n: string) => set('name', n);
+export const getUnlockAll = () => get<boolean>('unlock-all', false);
+export const setUnlockAll = (v: boolean) => set('unlock-all', v);

@@ -38,7 +38,9 @@ export class Workspace {
   runtimeIssues: Issue[] = [];
   runError: Issue | null = null;
   issueIdx = 0;
-  selected: string | null = null;
+  selIds: string[] = [];
+  selWire: string | null = null;
+  get selected() { return this.selIds[0] ?? null; }
   private undoStack: string[] = [];
   private scene!: Scene3D;
   private rt: MicrobitRuntime;
@@ -88,10 +90,13 @@ export class Workspace {
     this.setupScene();
     this.sync();
     this.setMode(this.mode, false);
+    window.addEventListener('keydown', this.onKey);
     (window as any).__mcl = this.testApi();
+    if (this.level.steps.length) setTimeout(() => this.openStepPop(false), 400);
   }
 
   dispose() {
+    window.removeEventListener('keydown', this.onKey);
     this.rt.stop();
     stopSpeaking();
     clearTimeout(this.advanceTimer);
@@ -127,11 +132,9 @@ export class Workspace {
             <div class="hint" hidden></div>
             <div class="wire-colors" hidden><span>Colore del cavo</span></div>
             <div class="tip" hidden></div>
-            <div class="sel-tools" hidden>
-              <button class="btn btn-small" data-act="rotate">${icon('ph:arrow-clockwise-bold', 18)}Gira</button>
-              <button class="btn btn-small" data-act="info">${icon('ph:question-fill', 18)}Cos'è?</button>
-              <button class="btn btn-small btn-danger" data-act="delete">${icon('ph:trash-fill', 18)}Togli</button>
-            </div>
+            <div class="sel-tools" hidden></div>
+            <div class="ctx-menu" role="menu" hidden></div>
+            <div class="step-pop" hidden></div>
             <div class="view-btns">
               <button class="round" data-act="undo" aria-label="Annulla l'ultima mossa">${icon('ph:arrow-counter-clockwise-bold', 26)}</button>
               <button class="round" data-act="fit" aria-label="Guarda tutto il banco">${icon('ph:cube-fill', 26)}</button>
@@ -187,8 +190,11 @@ export class Workspace {
     }
     // azioni
     root.addEventListener('click', e => {
+      const wc = (e.target as HTMLElement).closest('[data-wcolor]') as HTMLElement | null;
+      if (wc) { this.recolorWire(wc.dataset.wcolor!); return; }
       const t = (e.target as HTMLElement).closest('[data-act],[data-mode]') as HTMLElement | null;
-      if (!t) return;
+      if (!t) { if (!(e.target as HTMLElement).closest('.ctx-menu')) this.hideCtx(); return; }
+      if (t.closest('.ctx-menu')) this.hideCtx();
       if (t.dataset.mode) { this.setMode(t.dataset.mode as Mode); return; }
       this.action(t.dataset.act!);
     });
@@ -234,23 +240,28 @@ export class Workspace {
 
   private setupScene() {
     this.scene = new Scene3D(this.q('.canvas-wrap'), {
-      onMove: (id, x, z, attachTo) => {
-        const p = this.parts.find(p => p.id === id);
-        if (!p) return;
+      onMove: (moves, attachTo) => {
         this.pushUndo();
-        const was = p.attachedTo;
-        p.x = x; p.z = z;
-        p.attachedTo = attachTo || undefined;
-        if (attachTo && !was) toast(`${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`, { kind: 'ok', ms: 4500 });
+        let attachedNow = false;
+        for (const m of moves) {
+          const p = this.parts.find(p => p.id === m.id);
+          if (!p) continue;
+          const was = p.attachedTo;
+          p.x = m.x; p.z = m.z;
+          p.attachedTo = moves.length === 1 ? attachTo || undefined : undefined;
+          if (p.attachedTo && !was) attachedNow = true;
+        }
+        if (attachedNow) toast(`${img('fire.svg', 22)}Attaccato al servo! Nel mondo vero lo incolla l'adulto con la colla a caldo.`, { kind: 'ok', ms: 4500 });
         this.sync();
       },
-      onSelect: id => { this.selected = id; this.positionSelTools(); },
-      onTerminal: ref => this.clickTerminal(ref),
-      onWire: id => this.removeWire(id),
+      onSelect: (ids, wire) => { this.selIds = ids; this.selWire = wire; this.hideCtx(); this.renderSelTools(); },
+      onTerminal: ref => { if (this.selIds.length || this.selWire) this.scene.setSelection([], null); this.clickTerminal(ref); },
+      onWireEnd: (id, end, ref) => this.moveWireEnd(id, end, ref),
+      onContext: (kind, id, x, y) => this.openCtx(kind, id, x, y),
       onButton: (b, down) => { this.rt.pressButton(b, down); for (const mb of this.parts.filter(p => p.type === 'microbit')) this.scene.setButtonPressed(mb.id, b, down); },
       onLogo: down => this.rt.touchLogo(down),
       onPad: (pin, down) => this.rt.touchPin(pin, down),
-      onFrame: dt => { this.hw.step(dt); if (this.selected) this.positionSelTools(); },
+      onFrame: dt => { this.hw.step(dt); if (this.selIds.length || this.selWire) this.positionSelTools(); },
       onDrop: (type, x, z) => this.addPart(type, x, z),
     });
     this.scene.onHover = (ref, x, y) => {
@@ -274,17 +285,72 @@ export class Workspace {
     return p.type === 'microbit' ? `micro:bit: ${t?.label}` : `${PARTS[p.type].name}: ${t?.label}`;
   }
 
+  /** I bottoni che compaiono sopra a ciò che hai selezionato (pezzi o un cavo). */
+  private renderSelTools() {
+    const tools = this.q('.sel-tools');
+    tools.innerHTML = this.selWire ? this.wireActions() : this.selIds.length ? this.partActions() : '';
+    this.positionSelTools();
+  }
+
+  private partActions(menu = false) {
+    const parts = this.selIds.map(id => this.parts.find(p => p.id === id)).filter(Boolean) as PartInst[];
+    if (!parts.length) return '';
+    const one = parts.length === 1 ? parts[0] : null;
+    const cls = menu ? 'ctx-item' : 'btn btn-small';
+    const b = (act: string, ic: string, label: string, extra = '') => `<button class="${cls} ${extra}" data-act="${act}" role="${menu ? 'menuitem' : ''}">${icon(ic, 18)}${label}${menu && KEYS[act] ? `<kbd>${KEYS[act]}</kbd>` : ''}</button>`;
+    const loose = parts.some(p => !p.attachedTo);
+    return [
+      menu && parts.length > 1 ? `<div class="ctx-title">${parts.length} pezzi selezionati</div>` : '',
+      loose ? b('rotate', 'ph:arrow-clockwise-bold', 'Gira') : '',
+      one && TILTABLE.has(one.type) && !one.attachedTo ? b('tilt', 'ph:cube-fill', one.tilt ? 'Alza' : 'Sdraia') : '',
+      one?.attachedTo ? b('detach', 'ph:arrow-u-up-left-bold', 'Stacca dal servo') : '',
+      b('duplicate', 'ph:sparkle-fill', 'Duplica'),
+      one ? b('info', 'ph:question-fill', "Cos'è?") : '',
+      b('delete', 'ph:trash-fill', 'Togli', 'btn-danger'),
+    ].join('');
+  }
+
+  private wireActions(menu = false) {
+    const w = this.wires.find(x => x.id === this.selWire);
+    if (!w) return '';
+    const power = w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
+    const sw = power ? '' : `<div class="ctx-swatches">${WIRE_COLORS.map(c => `<button class="swatch swatch-s ${c.id === w.color ? 'on' : ''}" data-wcolor="${c.id}" aria-label="Cavo ${c.name}" style="background:${c.hex}"></button>`).join('')}</div>`;
+    const cls = menu ? 'ctx-item btn-danger' : 'btn btn-small btn-danger';
+    return `${menu ? `<div class="ctx-title">${power ? 'Cavo delle pile' : 'Cavo a coccodrillo'}</div>` : ''}${sw}<button class="${cls}" data-act="delete" role="${menu ? 'menuitem' : ''}">${icon('ph:trash-fill', 18)}Togli${menu ? '<kbd>Canc</kbd>' : ''}</button>`;
+  }
+
   private positionSelTools() {
     const tools = this.q('.sel-tools');
-    const p = this.selected ? this.parts.find(x => x.id === this.selected) : null;
-    if (!p || this.mode !== 'build' || this.running) { tools.hidden = true; return; }
-    const s = this.scene.screenOf(p.id);
+    if ((!this.selIds.length && !this.selWire) || this.running || this.mode === 'code' || !tools.innerHTML || !this.q('.ctx-menu').hidden) { tools.hidden = true; return; }
+    const s = this.scene.selectionAnchor();
     if (!s) { tools.hidden = true; return; }
     tools.hidden = false;
-    (tools.querySelector('[data-act=rotate]') as HTMLElement).hidden = !!p.attachedTo;
-    tools.style.left = Math.round(s.x) + 'px';
-    tools.style.top = Math.max(8, Math.round(s.y) - 56) + 'px';
+    const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+    const half = tools.offsetWidth / 2;
+    tools.style.left = Math.round(Math.max(half + 6, Math.min(wrap.width - half - 6, s.x))) + 'px';
+    tools.style.top = Math.max(8, Math.round(s.y) - 58) + 'px';
   }
+
+  private openCtx(kind: 'part' | 'wire' | 'none', _id: string | null, x: number, y: number) {
+    const menu = this.q('.ctx-menu');
+    let html = '';
+    if (kind === 'part') html = this.partActions(true);
+    else if (kind === 'wire') html = this.wireActions(true);
+    else html = `<button class="ctx-item" data-act="fit" role="menuitem">${icon('ph:cube-fill', 18)}Guarda tutto il banco</button>
+      <button class="ctx-item" data-act="undo" role="menuitem">${icon('ph:arrow-counter-clockwise-bold', 18)}Annulla<kbd>Ctrl+Z</kbd></button>
+      <button class="ctx-item" data-act="redo" role="menuitem">${icon('ph:arrow-clockwise-bold', 18)}Ripeti<kbd>Ctrl+Y</kbd></button>`;
+    if (!html) return;
+    menu.innerHTML = html;
+    menu.hidden = false;
+    const wrap = this.q('.canvas-wrap').getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    menu.style.left = Math.min(x - wrap.left, wrap.width - mw - 6) + 'px';
+    menu.style.top = Math.min(y - wrap.top, wrap.height - mh - 6) + 'px';
+    this.q('.sel-tools').hidden = true;
+    (menu.querySelector('button') as HTMLElement | null)?.focus();
+  }
+
+  private hideCtx() { const m = this.root.querySelector<HTMLElement>('.ctx-menu'); if (m) m.hidden = true; }
 
   // ---------- azioni ----------
 
@@ -297,8 +363,14 @@ export class Workspace {
       case 'zin': this.scene.zoom(0.8); break;
       case 'zout': this.scene.zoom(1.25); break;
       case 'rotate': this.rotateSel(); break;
+      case 'tilt': this.tiltSel(); break;
+      case 'detach': this.detachSel(); break;
+      case 'duplicate': this.duplicateSel(); break;
       case 'info': { const p = this.parts.find(x => x.id === this.selected); if (p) openCard(p.type); break; }
-      case 'delete': if (this.selected) this.removePart(this.selected); break;
+      case 'delete': this.deleteSel(); break;
+      case 'redo': this.redo(); break;
+      case 'step-ok': this.closeStepPop(); break;
+      case 'step-open': this.openStepPop(true); break;
       case 'shake': this.rt.gesture('Shake'); break;
       case 'sensors': { const b = this.q('.sensors'); const open = !b.classList.contains('open'); b.classList.toggle('open', open); this.q('.sensors-title').setAttribute('aria-expanded', String(open)); break; }
       case 'download': void this.download(); break;
@@ -329,6 +401,7 @@ export class Workspace {
     }
     this.pending = null;
     this.scene.setPending(null);
+    if (this.selIds.length || this.selWire) this.scene.setSelection([], null);
     this.scene.setMode(m);
     this.q('.wire-colors').hidden = m !== 'wire' || this.running;
     this.positionSelTools();
@@ -346,10 +419,10 @@ export class Workspace {
     this.pushUndo();
     const pos = x === undefined ? this.freeSpot(type) : { x, z: z! };
     const id = newId(type);
-    this.parts.push({ id, type, x: pos.x, z: pos.z, rot: type === 'servo' ? 0 : 0 });
+    this.parts.push({ id, type, x: pos.x, z: pos.z, rot: 0 });
     if (this.mode !== 'build') this.setMode('build', false);
     this.sync();
-    this.scene.select(id);
+    this.scene.setSelection([id], null);
     if (!this.scene.isVisible(id)) this.scene.fit(this.parts);
   }
 
@@ -357,8 +430,8 @@ export class Workspace {
     const [w, , d] = PARTS[type].size;
     const r = Math.max(w, d) / 2 + 1;
     const cand: { x: number; z: number }[] = [];
-    for (let zz = 2; zz >= -10; zz -= 5) for (let xx = 0; xx <= 18; xx += 5) { cand.push({ x: xx, z: zz }, { x: -xx, z: zz }); }
-    cand.push({ x: 0, z: 9 }, { x: 8, z: 9 }, { x: -8, z: 9 });
+    for (let zz = 2; zz >= -18; zz -= 5) for (let xx = 0; xx <= 34; xx += 5) { cand.push({ x: xx, z: zz }, { x: -xx, z: zz }); }
+    for (let xx = 0; xx <= 34; xx += 6) cand.push({ x: xx, z: 9 }, { x: -xx, z: 9 }, { x: xx, z: 16 }, { x: -xx, z: 16 });
     for (const c of cand) {
       const ok = this.parts.filter(p => !p.attachedTo).every(p => {
         const [pw, , pd] = PARTS[p.type].size;
@@ -369,21 +442,95 @@ export class Workspace {
     return { x: 0, z: 0 };
   }
 
-  private removePart(id: string) {
-    if (this.running) return;
+  private deleteSel() {
+    if (this.running) { toast('Prima ferma la prova.'); return; }
+    if (this.selWire) { this.removeWire(this.selWire); return; }
+    if (!this.selIds.length) return;
     this.pushUndo();
-    this.parts = this.parts.filter(p => p.id !== id);
-    for (const p of this.parts) if (p.attachedTo === id) { p.attachedTo = undefined; }
-    this.wires = this.wires.filter(w => !w.a.startsWith(id + ':') && !w.b.startsWith(id + ':'));
-    this.selected = null;
+    const del = new Set(this.selIds);
+    // i materiali attaccati a un servo tolto restano sul banco
+    for (const p of this.parts) if (p.attachedTo && del.has(p.attachedTo) && !del.has(p.id)) {
+      const host = this.parts.find(h => h.id === p.attachedTo)!;
+      p.attachedTo = undefined; p.x = host.x + 4; p.z = host.z;
+    }
+    this.parts = this.parts.filter(p => !del.has(p.id));
+    this.wires = this.wires.filter(w => !del.has(w.a.split(':')[0]) && !del.has(w.b.split(':')[0]));
+    const n = del.size;
+    this.scene.setSelection([], null);
     this.sync();
+    toast(`${icon('ph:trash-fill', 20)}${n === 1 ? 'Pezzo tolto.' : `${n} pezzi tolti.`}`, { action: 'Rimettili', onAction: () => this.undo() });
   }
 
   private rotateSel() {
-    const p = this.parts.find(x => x.id === this.selected);
-    if (!p || p.attachedTo) return;
+    const list = this.selIds.map(id => this.parts.find(x => x.id === id)).filter(p => p && !p.attachedTo) as PartInst[];
+    if (!list.length || this.running) return;
     this.pushUndo();
-    p.rot = ((p.rot || 0) + 1) % 4;
+    for (const p of list) p.rot = ((p.rot || 0) + 1) % 8;
+    this.sync();
+  }
+
+  private tiltSel() {
+    const p = this.parts.find(x => x.id === this.selected);
+    if (!p || p.attachedTo || !TILTABLE.has(p.type) || this.running) return;
+    this.pushUndo();
+    p.tilt = p.tilt ? 0 : 1;
+    this.sync();
+  }
+
+  private detachSel() {
+    const p = this.parts.find(x => x.id === this.selected);
+    if (!p?.attachedTo || this.running) return;
+    this.pushUndo();
+    const host = this.parts.find(h => h.id === p.attachedTo);
+    p.attachedTo = undefined;
+    if (host) { p.x = host.x + 5; p.z = host.z + 3; }
+    this.sync();
+  }
+
+  private duplicateSel() {
+    if (this.running) return;
+    const list = this.selIds.map(id => this.parts.find(x => x.id === id)).filter(Boolean) as PartInst[];
+    const copyable = list.filter(p => p.type !== 'microbit');
+    if (!copyable.length) { toast('Il micro:bit c\'è già: per questi progetti ne basta uno.'); return; }
+    this.pushUndo();
+    const ids: string[] = [];
+    for (const p of copyable) {
+      const host = p.attachedTo ? this.parts.find(h => h.id === p.attachedTo) : null;
+      const id = newId(p.type);
+      this.parts.push({ id, type: p.type, x: Math.min(38, (host?.x ?? p.x) + 6), z: Math.min(24, (host?.z ?? p.z) + 4), rot: p.rot || 0, tilt: p.tilt });
+      ids.push(id);
+    }
+    if (copyable.length < list.length) toast('Il micro:bit non si duplica: ne basta uno.');
+    this.sync();
+    this.scene.setSelection(ids, null);
+    if (ids.some(id => !this.scene.isVisible(id))) this.scene.fit(this.parts);
+  }
+
+  private recolorWire(color: string) {
+    const w = this.wires.find(x => x.id === this.selWire);
+    if (!w || this.running || w.color === color) return;
+    this.pushUndo();
+    w.color = color;
+    this.sync();
+    this.scene.setSelection([], w.id, false);
+    this.renderSelTools();
+  }
+
+  /** Hai preso la pinza di un cavo e l'hai portata su un altro punto. */
+  private moveWireEnd(id: string, end: 'a' | 'b', ref: string | null) {
+    const w = this.wires.find(x => x.id === id);
+    if (!w || this.running) return;
+    this.pending = null;
+    this.scene.setPending(null);
+    this.renderHint();
+    const fixed = end === 'a' ? w.b : w.a;
+    const old = end === 'a' ? w.a : w.b;
+    if (!ref || ref === old) { if (!ref) toast('Porta la pinza sopra un cerchietto per collegarla.'); return; }
+    const err = canConnect(this.parts, this.wires.filter(x => x.id !== id), fixed, ref);
+    if (err) { toast(`${icon('ph:warning-fill', 20)}${esc(err)}`, { kind: 'warn' }); tone(220, 120); return; }
+    this.pushUndo();
+    if (end === 'a') w.a = ref; else w.b = ref;
+    tone(1175, 60);
     this.sync();
   }
 
@@ -430,24 +577,62 @@ export class Workspace {
     if (!w) return;
     this.pushUndo();
     this.wires = this.wires.filter(x => x.id !== id);
+    this.scene.setSelection([], null);
     this.sync();
     toast(`${icon('ph:trash-fill', 20)}Cavo tolto.`, { action: 'Rimettilo', onAction: () => this.undo() });
   }
 
+  private redoStack: string[] = [];
+  private snap() { return JSON.stringify({ parts: this.parts, wires: this.wires }); }
   private pushUndo() {
-    this.undoStack.push(JSON.stringify({ parts: this.parts, wires: this.wires }));
-    if (this.undoStack.length > 60) this.undoStack.shift();
+    this.undoStack.push(this.snap());
+    if (this.undoStack.length > 80) this.undoStack.shift();
+    this.redoStack = [];
   }
 
   undo() {
     if (this.running) { toast('Prima ferma la prova, poi puoi annullare.'); return; }
     const s = this.undoStack.pop();
     if (!s) { toast('Non c\'è niente da annullare.'); return; }
+    this.redoStack.push(this.snap());
     const v = JSON.parse(s);
     this.parts = v.parts;
     this.wires = v.wires;
+    this.scene.setSelection([], null);
     this.sync();
   }
+
+  redo() {
+    if (this.running) { toast('Prima ferma la prova.'); return; }
+    const s = this.redoStack.pop();
+    if (!s) { toast('Non c\'è niente da ripetere.'); return; }
+    this.undoStack.push(this.snap());
+    const v = JSON.parse(s);
+    this.parts = v.parts;
+    this.wires = v.wires;
+    this.scene.setSelection([], null);
+    this.sync();
+  }
+
+  /** Tasti rapidi come nei programmi di disegno. */
+  private onKey = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (document.querySelector('.modal-back')) return;
+    const ctrl = e.ctrlKey || e.metaKey;
+    const k = e.key.toLowerCase();
+    if (k === 'escape') {
+      if (!this.q('.step-pop').hidden) { this.closeStepPop(); return; }
+      this.hideCtx(); this.pending = null; this.scene.setPending(null); this.renderHint(); this.scene.setSelection([], null); return;
+    }
+    if (this.mode === 'code') return;
+    if (k === 'delete' || k === 'backspace') { if (this.selIds.length || this.selWire) { e.preventDefault(); this.deleteSel(); } return; }
+    if (ctrl && k === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); return; }
+    if (ctrl && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); this.redo(); return; }
+    if (ctrl && k === 'd') { e.preventDefault(); this.duplicateSel(); return; }
+    if (ctrl && k === 'a') { e.preventDefault(); this.scene.setSelection(this.parts.filter(p => !p.attachedTo).map(p => p.id), null); return; }
+    if (!ctrl && k === 'r') { this.rotateSel(); return; }
+  };
 
   private restart() {
     const m = modal(`<h2>Ricominciare il progetto?</h2><p class="lead">Il banco torna come all'inizio e il codice torna quello del livello.</p>
@@ -466,6 +651,7 @@ export class Workspace {
       this.ranChanged = false;
       this.mkProject = null;
       this.undoStack = [];
+      this.redoStack = [];
       this.setCode(this.level.code, false);
       void this.editor.open(this.codeSpec(), null);
       this.sync();
@@ -716,6 +902,7 @@ export class Workspace {
     if (m !== this.mode) this.setMode(m, false);
     this.renderGuide();
     this.renderHint();
+    this.openStepPop(false, this.doneSteps.has(n - 1));
     this.evaluate();
   }
 
@@ -748,9 +935,30 @@ export class Workspace {
         <button class="btn btn-next" data-act="next" ${done && this.step < L.steps.length - 1 ? '' : 'disabled'}>Avanti${icon('ph:arrow-right-bold', 20)}</button>
       </div>
       <button class="link-btn" data-act="restart">${icon('ph:arrow-counter-clockwise-bold', 16)}Ricomincia il progetto</button>`;
-    this.q('.code-step').innerHTML = `<span class="step-n">Passo ${this.step + 1} di ${L.steps.length}</span><b>${esc(s.title)}</b><span>${esc(s.text)}</span>
-      ${canSpeak() ? `<button class="btn btn-small" data-act="listen" aria-label="Ascolta">${icon('ph:speaker-high-fill', 18)}</button>` : ''}`;
+    this.q('.code-step').innerHTML = `<span class="code-step-n">${this.step + 1}</span><div class="code-step-txt"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>
+      ${canSpeak() ? `<button class="btn btn-small" data-act="listen" aria-label="Ascolta">${icon('ph:speaker-high-fill', 18)}</button>` : ''}
+      <button class="btn btn-small" data-act="step-open">${icon('ph:question-fill', 18)}Cosa devo fare?</button>`;
   }
+
+  /** Il passo nuovo, grande e al centro dello schermo: i bambini piccoli non leggono la colonna a destra. */
+  openStepPop(force: boolean, bravo = false) {
+    const st = this.level.steps[this.step];
+    const pop = this.q('.step-pop');
+    if (!st || (this.finished && !force)) return;
+    const MODE_IMG: Record<Mode, string> = { build: 'package.svg', wire: 'crocodile.svg', code: 'microbit.svg' };
+    pop.innerHTML = `<div class="step-card" role="dialog" aria-label="Passo ${this.step + 1}">
+      ${bravo ? `<div class="step-bravo">${img('party-popper.svg', 30)}Bravo! Ora il passo dopo:</div>` : ''}
+      <div class="step-head">${img(MODE_IMG[st.mode], 54)}<div><span class="step-n">Passo ${this.step + 1} di ${this.level.steps.length} · ${MODE_LABEL[st.mode]}</span><h2>${esc(st.title)}</h2></div></div>
+      <p>${esc(st.text)}</p>
+      <div class="row">
+        ${canSpeak() ? `<button class="btn btn-soft" data-act="listen">${icon('ph:speaker-high-fill', 22)}Ascolta</button>` : ''}
+        <button class="btn btn-go" data-act="step-ok">Ok, ci provo!</button>
+      </div></div>`;
+    pop.hidden = false;
+    (pop.querySelector('[data-act=step-ok]') as HTMLElement).focus();
+  }
+
+  closeStepPop() { this.q('.step-pop').hidden = true; }
 
   private renderHint() {
     const h = this.q('.hint');
@@ -797,6 +1005,7 @@ export class Workspace {
         <a class="btn" href="#/">${icon('ph:flag-fill', 20)}Torna al percorso</a>
         <button class="btn" data-x="stay">Resta qui e gioca</button>
       </div></div>`, { wide: true });
+    this.closeStepPop();
     m.root.querySelector('[data-x=stay]')!.addEventListener('click', m.close);
     m.root.querySelector('[data-x=dl]')!.addEventListener('click', () => { m.close(); this.setMode('code'); void this.download(); });
     m.root.querySelector('a')!.addEventListener('click', m.close);
@@ -846,8 +1055,15 @@ export class Workspace {
       partClient: (id: string) => this.scene.partClient(id),
       hornClient: (id: string) => this.scene.hornTipClient(id),
       buttonClient: (mb: string, b: string) => this.scene.buttonClient(mb, b),
+      wireClient: (id: string) => this.scene.wireClient(id),
+      clipClient: (id: string, end: 'a' | 'b') => this.scene.clipClient(id, end),
+      select: (ids: string[], wire: string | null = null) => this.scene.setSelection(ids, wire),
+      wiresList: () => this.wires.map(w => ({ ...w })),
+      partsFull: () => this.parts.map(p => ({ ...p })),
     };
   }
 }
 
 const norm = (s: string) => (s || '').replace(/\s+/g, '');
+const TILTABLE = new Set(['servo', 'cardboardBox', 'cardboardPanel', 'paperCup', 'cardboardTube', 'battery']);
+const KEYS: Record<string, string> = { rotate: 'R', duplicate: 'Ctrl+D', delete: 'Canc' };

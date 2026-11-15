@@ -8,7 +8,8 @@ export interface PartInst {
   x: number;
   z: number;
   y?: number;
-  rot: number;           // giri di 90°
+  rot: number;           // giri da 45° attorno all'asse verticale
+  tilt?: number;         // 1 = sdraiato su un fianco
   attachedTo?: string;   // id del servo a cui è attaccato (materiali)
 }
 
