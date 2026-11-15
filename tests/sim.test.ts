@@ -350,3 +350,20 @@ describe('La luce notturna', () => {
     expect(f.errors).toEqual([]);
   });
 });
+
+describe('Sasso, carta, forbice', () => {
+  it('a ogni scossa sceglie una delle tre mani', async () => {
+    const { levelById } = await import('../src/data/levels');
+    const f = fakeBridge();
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('sasso')!.code);
+    await wait(20);
+    for (let i = 0; i < 12; i++) { rt.gesture('Shake'); await wait(650); }
+    const seen = [...rt.stats.iconsShown];
+    expect(seen.every(n => ['SmallSquare', 'Square', 'Scissors'].includes(n))).toBe(true);
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(['SmallSquare', 'Square', 'Scissors']).toContain(rt.lastIcon);
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  }, 15000);
+});

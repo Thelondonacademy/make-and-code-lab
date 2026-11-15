@@ -224,6 +224,7 @@ export class MicrobitRuntime {
     this.bridge.display(this.leds);
   }
 
+  lastIcon = ''; // l'ultimo disegno mostrato (per il gioco sasso, carta, forbice)
   private anim = 0; // cambia con led.stopAnimation(): la scritta che scorre si ferma subito
   private async scroll(text: string, interval: number) {
     const gen = this.generation;
@@ -344,6 +345,7 @@ export class MicrobitRuntime {
       showString: async (s: string, interval = 150) => { rt.stats.textsShown.push(String(s)); await rt.scroll(String(s), interval); },
       showIcon: async (name: string, interval = 600) => {
         rt.stats.iconsShown.add(name);
+        rt.lastIcon = name;
         rt.show(ICONS[name] || ICONS.Heart);
         await rt.sleep(interval);
       },
@@ -353,6 +355,7 @@ export class MicrobitRuntime {
         await rt.sleep(interval);
       },
       showLeds: async (leds: string, interval = 400) => {
+        rt.lastIcon = 'leds';
         const { bits } = parseLeds(leds);
         rt.stats.iconsShown.add('leds');
         rt.show(bits.slice(0, 25).padEnd(25, '0'));

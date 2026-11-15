@@ -226,6 +226,53 @@ basic.forever(function () {
     },
   },
   {
+    id: 'sasso',
+    lesson: 1,
+    title: 'Sasso, carta, forbice',
+    icon: 'gi:rock',
+    intro: 'Scuoti il micro:bit: sceglie a caso sasso, carta o forbice. Sfida un amico!',
+    palette: ['microbit', 'battery'],
+    start: { parts: [], wires: [] },
+    code: `let mano = 0
+input.onGesture(Gesture.Shake, function () {
+    mano = randint(1, 3)
+    if (mano == 1) {
+        basic.showIcon(IconNames.SmallSquare)
+    } else if (mano == 2) {
+        basic.showIcon(IconNames.Square)
+    } else {
+        basic.showIcon(IconNames.Scissors)
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'math', 'variables', 'logic'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Così puoi giocare tenendolo in mano.', goal: c => has(c, 'battery') },
+      { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
+      {
+        title: 'Scuoti!', mode: 'code', text: 'Premi Prova! Poi premi "Scuoti". Il micro:bit sceglie: sasso, carta o forbice.',
+        goal: c => c.running && !!c.stats && c.stats.shakes > 0 && ['SmallSquare', 'Square', 'Scissors'].some(n => c.stats!.iconsShown.has(n)),
+        why: { q: 'Come fa a scegliere?', a: 'Pesca un numero a caso: 1, 2 o 3. Il quadratino piccolo è il sasso, il quadrato grande è la carta, poi c\'è la forbice.' },
+      },
+      {
+        title: 'Sfida l\'amico', mode: 'code', text: 'Scuoti almeno 3 volte. L\'amico gioca con te: guarda chi vince!',
+        goal: c => c.running && !!c.stats && c.stats.shakes >= 3 && c.stats.iconsShown.size >= 2,
+        why: { q: 'Chi vince?', a: 'Il sasso rompe la forbice. La forbice taglia la carta. La carta avvolge il sasso. Se fate uguale, è pareggio!' },
+      },
+      {
+        title: 'Disegna il tuo sasso', mode: 'code', text: 'Nel blocco del sasso (il quadratino piccolo) scegli un altro disegno, o disegnalo tu con "mostra LED". Poi premi Prova! e scuoti.',
+        goal: c => c.runInStep && !c.code.includes('IconNames.SmallSquare') && !!c.stats && c.stats.shakes > 0 && (c.stats.iconsShown.size > 0),
+        why: { q: 'Posso inventare altre mani?', a: 'Sì! Puoi cambiare tutti i disegni, o inventare un gioco nuovo con regole tue.' },
+      },
+    ],
+    real: {
+      materials: ['due micro:bit V2, uno a testa (oppure uno solo contro la mano di un amico)', 'un portapile con 2 pile AAA per ogni micro:bit', 'il cavo USB per caricare il codice', 'un amico con cui giocare'],
+      safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Scuoti piano e tieni forte micro:bit e pile.'], ['solo', 'Non lanciarlo: si rompe!']],
+    },
+  },
+  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -341,7 +388,7 @@ basic.forever(function () {
 ];
 
 export const LESSONS: LessonDef[] = [
-  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice' }] },
+  { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },

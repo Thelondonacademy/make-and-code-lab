@@ -1007,9 +1007,26 @@ export class Workspace {
 
   /** Un passo: la gamba si muove, il micro:bit sente uno "scuoti". */
   takeStep() {
+    this.rt.lastIcon = '';
     this.rt.gesture('Shake');
     const legs = this.parts.filter(p => p.type === 'strap');
     for (const p of legs.length ? legs : this.parts.filter(p => p.type === 'microbit')) this.scene.bump(p.id);
+    if (/IconNames\.Scissors/.test(this.code) && /randint/.test(this.code)) setTimeout(() => this.friendPlays(), 250);
+  }
+
+  /** Sasso, carta, forbice: l'amico virtuale gioca contro il disegno del micro:bit. */
+  private friendPlays() {
+    if (!this.running || !this.rt.lastIcon) return;
+    const HANDS = [
+      { id: 'sasso', img: 'raised-fist.svg', name: 'sasso' },
+      { id: 'carta', img: 'raised-hand.svg', name: 'carta' },
+      { id: 'forbice', img: 'victory-hand.svg', name: 'forbice' },
+    ];
+    const mine = this.rt.lastIcon === 'Square' ? 'carta' : this.rt.lastIcon === 'Scissors' ? 'forbice' : 'sasso';
+    const friend = HANDS[Math.floor(Math.random() * 3)];
+    const beats: Record<string, string> = { sasso: 'forbice', forbice: 'carta', carta: 'sasso' };
+    const res = mine === friend.id ? 'Pareggio! Scuoti ancora.' : beats[mine] === friend.id ? 'Hai vinto tu!' : 'Ha vinto l\'amico!';
+    toast(`${img(friend.img, 30)}<span>L'amico fa <b>${friend.name}</b>. Tu: <b>${mine}</b>. ${res}</span>`, { kind: beats[mine] === friend.id ? 'ok' : 'info', ms: 2600 });
   }
 
   private wiredFoil(): string | null {
@@ -1020,7 +1037,7 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">Pulsanti del micro:bit</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button><button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
