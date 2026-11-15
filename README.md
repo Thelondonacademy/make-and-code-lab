@@ -16,6 +16,7 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 - **La luce notturna**: dal progetto "Nightlight" di micro:bit.org. Se la luce è sotto 100 si accendono tutte le lucine, altrimenti si spengono. Nel simulatore: "Spegni la luce" fa notte nella stanza, "Copri" è la mano sopra il micro:bit. Il micro:bit sta su un leggio di cartone.
 - **Sasso, carta, forbice**: dal progetto di micro:bit.org/MakeCode. Scuoti: numero a caso 1-3 → quadratino (sasso), quadrato (carta), forbice. Nel simulatore un amico virtuale gioca contro e dice chi vince.
 - **Il tester dei conduttori** (lezione 2): dal progetto "Conductivity tester" di micro:bit.org. Pin 1 e GND vanno a due graffette su un cartoncino; se l'oggetto appoggiato conduce, compare il cuore. Si provano moneta, banana, gomma, tappo e stagnola, anche con la prova accesa.
+- **Non toccare il filo!** (lezione 2): il classico gioco del filo (GND al filo, pin 0 all'anello). Se si toccano: X e suono, altrimenti faccina felice. Nel simulatore c'è il minigioco: trascini l'anello lungo il filo con il dito o il mouse.
 - **Luna che scodinzola**: un cagnolino di carta con il servo nella pancia e la stagnola sulla schiena. Accarezzi la stagnola (pin 1, tocco capacitivo del V2) e la coda scodinzola. Energia dal cavo USB o dalle pile. Le sagome da stampare sono in `public/paper-pet/luna-sagome.pdf` (disegni in `art/luna`; si rigenerano con `python3 scripts/process-luna-art.py` e poi `python3 scripts/build-paper-pet.py`).
 
 I progetti si salvano solo nel browser: niente account, niente dati inviati.

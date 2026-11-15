@@ -469,3 +469,20 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
   .code-actions { width: auto; }
   .code-actions .btn, .code-step .btn { width: auto; min-height: 36px; }
 }
+
+/* ---------- gioco del filo ---------- */
+.buzz { position: fixed; inset: 0; z-index: 35; background: rgba(29,28,31,.45); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.buzz-card { width: min(980px, 100%); height: min(560px, 100%); display: flex; flex-direction: column; background: #fff; border-radius: 24px; border: 4px solid var(--orange); overflow: hidden; }
+.buzz-hit .buzz-card { border-color: #E5484D; animation: shake .3s; }
+.buzz-head { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 2px solid var(--line); }
+.buzz-leds { display: grid; grid-template-columns: repeat(5, 9px); gap: 3px; padding: 6px; border-radius: 8px; background: #1D1C1F; flex: none; }
+.buzz-leds i { width: 9px; height: 9px; border-radius: 2px; background: #3a1d1d; }
+.buzz-leds i.on { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+.buzz-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.buzz-txt b { font-size: 19px; font-weight: 800; }
+.buzz-txt span { font-size: 14px; color: var(--grey); }
+.buzz-count { font-weight: 700; font-size: 16px; white-space: nowrap; }
+.buzz-count b { font-size: 22px; color: var(--orange-dark); }
+.buzz-x { width: 44px; height: 44px; flex: none; }
+.buzz-cv { flex: 1; width: 100%; min-height: 0; touch-action: none; cursor: grab; display: block; }
+@media (max-width: 560px) { .buzz-txt span { display: none; } .buzz-txt b { font-size: 16px; } .buzz { padding: 6px; } }

@@ -18,6 +18,7 @@ export interface LevelCtx {
   runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
   icon: string;           // il disegno che il micro:bit mostra adesso ('' = spento)
   tested: Record<string, boolean>; // oggetti provati sul piano di prova: conduce sì/no
+  game: { touches: number; finished: boolean; played: boolean }; // gioco del filo
 }
 
 /** Le pause nel codice (basic.pause(N)). */
@@ -65,6 +66,12 @@ const padWired = (c: LevelCtx) => {
   const pad = c.parts.find(p => p.type === 'testPad');
   const n = c.analysis.nets;
   return !!pad && c.parts.some(mb => mb.type === 'microbit' && ((n.same(`${mb.id}:P1`, `${pad.id}:A`) && n.same(`${mb.id}:GND`, `${pad.id}:B`)) || (n.same(`${mb.id}:P1`, `${pad.id}:B`) && n.same(`${mb.id}:GND`, `${pad.id}:A`))));
+};
+/** Il gioco del filo è collegato: un capo al GND e l'altro a un pin. */
+const buzzWired = (c: LevelCtx) => {
+  const bw = c.parts.find(p => p.type === 'buzzWire');
+  const n = c.analysis.nets;
+  return !!bw && c.parts.some(mb => mb.type === 'microbit' && ((n.same(`${mb.id}:P0`, `${bw.id}:L`) && n.same(`${mb.id}:GND`, `${bw.id}:W`)) || (n.same(`${mb.id}:P0`, `${bw.id}:W`) && n.same(`${mb.id}:GND`, `${bw.id}:L`))));
 };
 /** Sul piano c'è un oggetto che conduce. */
 const padConducts = (c: LevelCtx) => c.parts.some(o => c.parts.find(h => h.id === o.attachedTo)?.type === 'testPad' && ['coin', 'banana', 'foilBall'].includes(o.type));
@@ -347,6 +354,64 @@ input.onGesture(Gesture.Shake, function () {
     },
   },
   {
+    id: 'filo',
+    lesson: 2,
+    title: 'Non toccare il filo!',
+    icon: 'gi:wire-coil',
+    intro: 'Porta l\'anello lungo il filo a onde. Se lo tocchi, il micro:bit fa BZZZ!',
+    palette: ['microbit', 'battery', 'buzzWire'],
+    start: { parts: [], wires: [] },
+    code: `basic.forever(function () {
+    if (input.pinIsPressed(TouchPin.P0)) {
+        basic.showIcon(IconNames.No)
+        music.playTone(131, music.beat(BeatFraction.Half))
+    } else {
+        basic.showIcon(IconNames.Happy)
+    }
+})
+`,
+    namespaces: ['basic', 'input', 'music', 'logic'],
+    dependencies: { core: '*' },
+    steps: [
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
+      {
+        title: 'Il filo e l\'anello', mode: 'build', text: 'Trascina il gioco del filo sul banco: un filo a onde nella plastilina e un anello con il manico.',
+        goal: c => has(c, 'buzzWire'),
+        why: { q: 'Come si fa quello vero?', a: 'Un adulto piega un filo di metallo a onde e lo ferma in due palline di plastilina. Con un pezzo corto fa un anello e lo infila sul filo prima di chiudere.' },
+      },
+      {
+        title: 'Due cavi', mode: 'wire', text: 'Un cavo dal GND al filo. Un altro cavo dal pin 0 all\'anello.',
+        goal: c => buzzWired(c),
+        checklist: c => {
+          const bw = c.parts.find(p => p.type === 'buzzWire');
+          const mb = c.parts.find(p => p.type === 'microbit');
+          const on = (a: string, b: string) => !!bw && !!mb && c.analysis.nets.same(`${mb.id}:${a}`, `${bw.id}:${b}`);
+          return [{ label: 'GND → filo', color: '#1D1C1F', done: on('GND', 'W') }, { label: 'Pin 0 → anello', color: '#F5C400', done: on('P0', 'L') }];
+        },
+        why: { q: 'Perché si accende quando tocchi?', a: 'Il filo e l\'anello sono di metallo. Quando si toccano, l\'elettricità passa dal pin 0 al GND: il circuito si chiude, come nel tester.' },
+      },
+      {
+        title: 'Gioca!', mode: 'code', text: 'Premi Prova! Poi premi "Gioca" e porta l\'anello fino alla bandierina. Se tocchi il filo: X e BZZZ!',
+        goal: c => c.running && c.game.played && !!c.stats && c.stats.pins.has('P0'),
+        why: { q: 'Cosa fa il micro:bit?', a: 'Se il pin 0 è toccato, mostra una X e suona. Altrimenti mostra una faccina felice. Lo controlla per sempre, senza fermarsi.' },
+      },
+      {
+        title: 'Arriva in fondo', mode: 'code', text: 'Ora prova ad arrivare alla bandierina. Pochi tocchi = mano fermissima!',
+        goal: c => c.running && c.game.finished,
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Cambia la X con un altro disegno, per esempio una faccina triste. Poi premi Prova!, gioca e tocca il filo.',
+        goal: c => c.runInStep && !c.code.includes('IconNames.No') && !!c.stats && c.stats.pins.has('P0') && c.stats.iconsShown.size >= 2,
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2 e un portapile con 2 pile AAA', '2 cavi a coccodrillo', 'un filo di metallo spesso (gruccia o filo da giardino), circa 50 cm', 'plastilina e una base di cartone', 'nastro adesivo per coprire le punte'],
+      safety: [['adulto', 'Piegare e tagliare il filo: lo fa un adulto, le punte pungono.'], ['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli: GND al filo, pin 0 all\'anello.']],
+    },
+  },
+  {
     id: 'paperpet',
     lesson: 4,
     title: 'Luna che scodinzola',
@@ -463,7 +528,7 @@ basic.forever(function () {
 
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
-  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
+  { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!', level: 'filo' }, { icon: 'gi:banana', title: 'Il piano di frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro' }] },
   { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },

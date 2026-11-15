@@ -329,6 +329,21 @@ export const PARTS: Record<string, PartDef> = {
     size: [2.8, 1, 2.8], terminals: [],
     card: { cosa: 'Il tappo di una bottiglia. È di plastica.', come: ['Secondo te fa passare l\'elettricità? Provalo!'], sicurezza: [['solo', 'Usarlo per l\'esperimento.']], mondo: 'il tappo di una bottiglia di plastica' },
   },
+  buzzWire: {
+    type: 'buzzWire', name: 'Gioco del filo', category: 'materiali', icon: 'buzzwire.svg',
+    size: [14, 4.5, 6],
+    terminals: [
+      { id: 'W', label: 'filo', kind: 'pad', pos: [7.4, 0.5, 0] },
+      { id: 'L', label: 'anello', kind: 'pad', pos: [-4.6, 0.5, 4.2] },
+    ],
+    card: {
+      cosa: 'Un filo di metallo piegato a onde e un anello con il manico. Devi portare l\'anello da una parte all\'altra senza toccare il filo!',
+      come: ['Il filo va al GND. L\'anello va al pin 0.', 'Se l\'anello tocca il filo, il circuito si chiude: il micro:bit lo sente e fa BZZZ.'],
+      sicurezza: [['adulto', 'Piegare e tagliare il filo di metallo (le punte pungono).'], ['solo', 'Fermare il filo nella plastilina e attaccare i coccodrilli.']],
+      attenzione: 'Le punte del filo pungono: un adulto le piega o le copre con il nastro.',
+      mondo: 'un filo di metallo spesso (va bene una gruccia o filo da giardino), plastilina, 2 cavi a coccodrillo',
+    },
+  },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -362,7 +377,7 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
 export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);

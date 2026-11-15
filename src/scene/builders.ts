@@ -597,6 +597,35 @@ function plasticCap(): Built {
   return { group: g };
 }
 
+// ---------- Non toccare il filo ----------
+function buzzWire(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(14, 0.4, 5.4), mat(0xd9a660, { roughness: 0.95 }), 0, 0.2, 0));
+  const clay = mat(0x4fb06a, { roughness: 1 });
+  for (const x of [-6, 6]) { const c = mesh(new THREE.SphereGeometry(1, 16, 12), clay, x, 0.9, 0); c.scale.set(1, 0.75, 1); g.add(c); }
+  const metal = mat(0xc0c6cf, { metalness: 0.85, roughness: 0.3 });
+  // il filo a onde, da una plastilina all'altra
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const x = -6 + 12 * t;
+    pts.push(new THREE.Vector3(x, 1.2 + 2.2 * Math.sin(Math.PI * t) + 0.7 * Math.sin(3 * Math.PI * t), 1.1 * Math.sin(2 * Math.PI * t)));
+  }
+  pts.push(new THREE.Vector3(7.4, 0.5, 0)); // il capo del filo esce a destra: qui va il coccodrillo
+  const wire = new THREE.CatmullRomCurve3(pts);
+  g.add(mesh(new THREE.TubeGeometry(wire, 120, 0.12, 8), metal));
+  // l'anello infilato sul filo, con il manico che esce verso di te
+  const at = wire.getPoint(0.18);
+  const ring = mesh(new THREE.TorusGeometry(0.75, 0.1, 8, 28), metal, at.x, at.y, at.z);
+  ring.rotation.y = Math.PI / 2;
+  g.add(ring);
+  const handleEnd = new THREE.Vector3(-4.6, 0.5, 4.2);
+  const handle = new THREE.LineCurve3(new THREE.Vector3(at.x, at.y - 0.75, at.z), handleEnd);
+  g.add(mesh(new THREE.TubeGeometry(handle as any, 8, 0.1, 6), metal));
+  g.add(mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.6, 12), mat(0xe5484d), handleEnd.x + 0.0, handleEnd.y + 0.3, handleEnd.z - 0.6).rotateX(Math.PI / 2.6));
+  return { group: g };
+}
+
 /** Dove sta l'oggetto appoggiato sul piano di prova: sopra le due graffette. */
 export function padPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
   return { pos: new THREE.Vector3(0, 0.5, 0), quat: new THREE.Quaternion() };
@@ -607,7 +636,7 @@ export function hostPose(host: string, type: string) {
   return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : host === 'testPad' ? padPose() : null;
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap };
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap, buzzWire };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();

@@ -392,3 +392,25 @@ describe('Il tester dei conduttori', () => {
     expect(['coin', 'banana', 'eraser', 'plasticCap', 'foilBall'].every(t => mountsOf(t).includes('testPad'))).toBe(true);
   });
 });
+
+describe('Non toccare il filo', () => {
+  it('se l\'anello tocca il filo: X e suono; se no: faccina felice', async () => {
+    const { levelById } = await import('../src/data/levels');
+    let tones = 0;
+    const f = fakeBridge();
+    f.b.tone = () => { tones++; };
+    const rt = new MicrobitRuntime(f.b);
+    rt.start(levelById('filo')!.code);
+    await wait(80);
+    expect(rt.lastIcon).toBe('Happy');
+    rt.touchPin('P0', true);
+    await wait(1300);
+    expect(rt.stats.iconsShown.has('No')).toBe(true);
+    expect(tones).toBeGreaterThan(0);
+    rt.touchPin('P0', false);
+    await wait(1400);
+    expect(rt.lastIcon).toBe('Happy');
+    rt.stop();
+    expect(f.errors).toEqual([]);
+  });
+});
