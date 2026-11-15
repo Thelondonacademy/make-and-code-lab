@@ -649,12 +649,124 @@ export function padPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
   return { pos: new THREE.Vector3(0, 0.5, 0), quat: new THREE.Quaternion() };
 }
 
-/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
-export function hostPose(host: string, type: string) {
-  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : host === 'testPad' ? padPose() : null;
+// ---------- Il mostro del latte e la catapulta ----------
+/** Mette il servo in modo che il suo braccio stia in `hub` con gli assi dati (asse del braccio a 90° = X, asse di rotazione = Y). */
+function servoAt(hub: THREE.Vector3, X: THREE.Vector3, Y: THREE.Vector3) {
+  const Z = new THREE.Vector3().crossVectors(X, Y);
+  const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
+  const hornLocal = new THREE.Vector3(-0.85, 3.95, 0).applyQuaternion(q);
+  return { pos: hub.clone().sub(hornLocal), quat: q };
 }
 
-const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap, buzzWire, apple, orange, lemon };
+export const MILK = { W: 6, D: 6, H: 9, hubY: 5.0 };
+function milkCarton(): Built {
+  const g = new THREE.Group();
+  const { W, D, H } = MILK;
+  const white = mat(0xf4f7fb, { roughness: 0.8 });
+  // pareti: quella davanti ha il buco della bocca
+  const front = new THREE.Shape();
+  front.moveTo(-W / 2, 0); front.lineTo(W / 2, 0); front.lineTo(W / 2, H); front.lineTo(-W / 2, H); front.lineTo(-W / 2, 0);
+  const hole = new THREE.Path();
+  hole.moveTo(-2.3, MILK.hubY - 3.2); hole.lineTo(2.3, MILK.hubY - 3.2); hole.lineTo(2.3, MILK.hubY); hole.lineTo(-2.3, MILK.hubY); hole.lineTo(-2.3, MILK.hubY - 3.2);
+  front.holes.push(hole);
+  const fg = new THREE.ExtrudeGeometry(front, { depth: 0.2, bevelEnabled: false });
+  g.add(mesh(fg, white, 0, 0, D / 2 - 0.2));
+  g.add(mesh(new THREE.BoxGeometry(W, H, 0.2), white, 0, H / 2, -D / 2 + 0.1));
+  for (const x of [-1, 1]) g.add(mesh(new THREE.BoxGeometry(0.2, H, D), white, x * (W / 2 - 0.1), H / 2, 0));
+  g.add(mesh(new THREE.BoxGeometry(W, 0.2, D), mat(0x2b1a1a), 0, 0.1, 0));
+  // dentro la bocca: buio e una lingua
+  g.add(mesh(new THREE.PlaneGeometry(W - 0.4, H - 0.4), mat(0x2b1a1a), 0, H / 2, -D / 2 + 0.22));
+  g.add(mesh(new THREE.BoxGeometry(3, 0.2, 2.6), mat(0xe5484d), 0, MILK.hubY - 3.0, D / 2 - 1.6));
+  // tetto a capanna
+  const roof = new THREE.Shape();
+  roof.moveTo(-D / 2, 0); roof.lineTo(D / 2, 0); roof.lineTo(0, 2.4); roof.lineTo(-D / 2, 0);
+  const rg = new THREE.ExtrudeGeometry(roof, { depth: W, bevelEnabled: false });
+  rg.rotateY(Math.PI / 2); rg.translate(-W / 2, H, 0);
+  g.add(mesh(rg, mat(0xdce6f2, { roughness: 0.8 })));
+  g.add(mesh(new THREE.BoxGeometry(W, 0.4, 1.0), white, 0, H + 2.5, 0));
+  // striscia blu, occhi, denti di sopra
+  g.add(mesh(new THREE.BoxGeometry(W + 0.04, 1.4, D + 0.04), mat(0x5b8fd6), 0, 0.75, 0));
+  for (const x of [-1.4, 1.4]) {
+    g.add(mesh(new THREE.CircleGeometry(0.8, 20), mat(0xffffff), x, 7.2, D / 2 + 0.02));
+    g.add(mesh(new THREE.CircleGeometry(0.4, 16), mat(0x1d1c1f), x + 0.1, 7.1, D / 2 + 0.03));
+  }
+  for (let i = 0; i < 5; i++) {
+    const t = new THREE.Shape(); t.moveTo(-0.4, 0); t.lineTo(0.4, 0); t.lineTo(0, -0.6); t.lineTo(-0.4, 0);
+    g.add(mesh(new THREE.ShapeGeometry(t), mat(0xffffff), -1.8 + i * 0.9, MILK.hubY, D / 2 + 0.03));
+  }
+  // la bocca: il cartone ritagliato, attaccato in alto (cerniera); il filo la tira su
+  const jaw = new THREE.Group();
+  jaw.name = 'jaw';
+  jaw.position.set(0, MILK.hubY, D / 2 + 0.05);
+  jaw.add(mesh(new THREE.BoxGeometry(4.6, 3.2, 0.15), white, 0, -1.6, 0));
+  jaw.add(mesh(new THREE.BoxGeometry(4.4, 1.0, 0.16), mat(0x5b8fd6), 0, -2.6, 0));
+  for (let i = 0; i < 5; i++) { const tooth = mesh(new THREE.ConeGeometry(0.28, 0.55, 4), mat(0xffffff), -1.8 + i * 0.9, -0.1, 0.05); jaw.add(tooth); }
+  const knot = new THREE.Object3D();
+  knot.name = 'jaw-knot';
+  knot.position.set(1.7, -3.0, 0.1);
+  jaw.add(knot);
+  g.add(jaw);
+  // il filo (si aggiorna quando il servo gira)
+  const sg = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const string = new THREE.Line(sg, new THREE.LineBasicMaterial({ color: 0xf2f2f2 }));
+  string.name = 'string';
+  string.visible = false;
+  g.add(string);
+  return { group: g };
+}
+
+/** Il servo sta sopra la testa, sul tetto (come nel Milky Monster: un filo tira la bocca). */
+export function milkPose(type: string) {
+  if (type !== 'servo') return null;
+  return { pos: new THREE.Vector3(1.2, MILK.H + 2.7, 0), quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)) };
+}
+/** Quanto è aperta la bocca (radianti) per un angolo del servo: 180 chiusa, 100 o meno tutta aperta. */
+export function jawOpen(angle: number) { return Math.max(0, Math.min(1, (180 - angle) / 80)) * 1.15; }
+
+function catapultBase(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(7, 3, 9), mat(0xd9a660, { roughness: 0.95 }), 0, 1.5, 0));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(7, 3, 9)), new THREE.LineBasicMaterial({ color: 0xa87b3f }));
+  edges.position.y = 1.5;
+  g.add(edges);
+  // il fermo davanti: il braccio ci sbatte e la pallina parte
+  g.add(mesh(new THREE.BoxGeometry(1.2, 2.2, 0.5), mat(0xc48f4c), -1.7, 4.1, -3.2));
+  return { group: g };
+}
+
+/** Il servo sdraiato sulla scatola: a 0 il braccio guarda indietro, a 150 è quasi in avanti. */
+export function catapultPose(type: string) {
+  if (type !== 'servo') return null;
+  return servoAt(new THREE.Vector3(-1.5, 3.95, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(-1, 0, 0));
+}
+
+function catapultArm(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(6.4, 0.25, 0.9), mat(0xe9c98e, { roughness: 0.9 }), 3.0, -0.1, 0));
+  const cup = mesh(new THREE.CylinderGeometry(0.75, 0.6, 0.5, 18, 1, true), mat(0xe5484d, { side: THREE.DoubleSide }), 5.9, -0.4, 0);
+  cup.rotation.z = Math.PI / 2;
+  g.add(cup);
+  g.add(mesh(new THREE.CircleGeometry(0.62, 18), mat(0xc63a3a), 5.65, -0.4, 0).rotateY(-Math.PI / 2));
+  const ball = mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(0xd4d8de, { metalness: 0.7, roughness: 0.35, flatShading: true }), 6.0, -0.95, 0);
+  ball.name = 'ball';
+  g.add(ball);
+  return { group: g };
+}
+
+function bucket(): Built {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(2.5, 2.1, 2.6, 28, 1, true), mat(0x2f80d1, { side: THREE.DoubleSide, roughness: 0.6 }), 0, 1.3, 0));
+  g.add(mesh(new THREE.CircleGeometry(2.1, 28), mat(0x1f5f9f), 0, 0.05, 0).rotateX(-Math.PI / 2));
+  g.add(mesh(new THREE.TorusGeometry(2.5, 0.12, 8, 32), mat(0xffffff), 0, 2.6, 0).rotateX(Math.PI / 2));
+  return { group: g };
+}
+
+/** Dove si mette un pezzo attaccato a un altro (corpo di Luna o fascia). */
+export function hostPose(host: string, type: string) {
+  return host === 'petBody' ? bodyPose(type) : host === 'strap' ? strapPose(type) : host === 'cardStand' ? standPose(type) : host === 'testPad' ? padPose() : host === 'milkCarton' ? milkPose(type) : host === 'catapultBase' ? catapultPose(type) : null;
+}
+
+const BUILDERS: Record<string, () => Built> = { microbit, battery, servo, led, resistor, cardboardBox, cardboardPanel, paperCup, straw, cardboardTube, foilBall, petBody, petFace, petTail, petLegs, foilPatch, usb: usbLaptop, strap, cardStand, testPad, coin, banana, eraser, plasticCap, buzzWire, apple, orange, lemon, milkCarton, catapultBase, catapultArm, bucket };
 
 export function buildPart(type: string): Built {
   const b = BUILDERS[type]();
@@ -685,6 +797,7 @@ export function attachPose(type: string): { pos: [number, number, number]; rotZ:
     case 'cardboardBox': return { pos: [0.6, 0.1, 0], rotZ: 0 };
     case 'cardboardTube': return { pos: [1.2, 0.1, 0], rotZ: 0 };
     case 'foilBall': return { pos: [2.5, 0.1, 0], rotZ: 0 };
+    case 'catapultArm': return { pos: [0.1, 0.3, 0], rotZ: 0 };
     default: return { pos: [1, 0.1, 0], rotZ: 0 };
   }
 }

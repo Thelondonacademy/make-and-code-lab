@@ -24,7 +24,7 @@ export function icon(name: string, size = 24, extraStyle = ''): string {
   return \`<svg class="ico" width="\${size}" height="\${size}" viewBox="0 0 \${i.w} \${i.h}" fill="currentColor" aria-hidden="true" style="\${extraStyle}">\${i.b}</svg>\`;
 }
 `);
-const fl = ['red-circle','sparkles','party-popper','thinking-face','grinning-face-with-big-eyes','socks','footprints','raised-fist','raised-hand','victory-hand','paperclip','coin','banana','red-apple','lemon','tangerine','musical-keyboard','compass','satellite-antenna','love-letter'];
+const fl = ['red-circle','sparkles','party-popper','thinking-face','grinning-face-with-big-eyes','socks','footprints','raised-fist','raised-hand','victory-hand','paperclip','coin','banana','red-apple','lemon','tangerine','musical-keyboard','compass','satellite-antenna','love-letter','bucket','bullseye','tooth','spoon'];
 for (const n of fl) { const i = F.icons[n]; if (!i) throw new Error('fl ' + n); const w = i.width || F.width, h = i.height || F.height;
   fs.writeFileSync('public/icons/' + n + '.svg', `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">${i.body}</svg>`); }
 console.log('icone:', Object.keys(out).length);

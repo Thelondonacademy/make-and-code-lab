@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PARTS } from '../data/parts';
 import type { PartInst, Wire } from '../sim/circuit';
-import { buildPart, attachPose, bodyPose, hostPose, petLeadEnds, Built, mat, COLORS } from './builders';
+import { buildPart, attachPose, bodyPose, hostPose, petLeadEnds, jawOpen, Built, mat, COLORS } from './builders';
 import { WIRE_COLORS, mountOf, mountsOf } from '../data/parts';
 
 export type SceneMode = 'build' | 'wire' | 'code';
@@ -149,6 +149,12 @@ export class Scene3D {
     this.cb.onFrame(dt);
     const t = performance.now() / 1000;
     for (const h of this.highlights) { const s = 1 + 0.25 * Math.sin(t * 6); h.scale.set(s, s, s); }
+    if (this.flying) {
+      const f = this.flying, k = Math.min(1, (performance.now() - f.t0) / f.dur);
+      f.m.position.lerpVectors(f.from, f.to, k);
+      f.m.position.y = f.from.y + (f.to.y - f.from.y) * k + f.h * 4 * k * (1 - k);
+      if (k >= 1) { this.landed = f.m; this.flying = null; }
+    }
     for (const [id, t0] of this.bumps) {
       const o = this.objs.get(id);
       const k = (performance.now() - t0) / 350;
@@ -234,7 +240,7 @@ export class Scene3D {
     const bp = hostObj ? hostPose(hostObj.inst.type, p.type) : null;
     const horn = hostObj?.inst.type === 'servo' ? hostObj.built.horn : null;
     const inBody = !!bp && hostObj?.inst.type === 'petBody';
-    if (p.type === 'servo') this.relead(o, inBody);
+    if (p.type === 'servo') this.relead(o, bp && hostObj?.inst.type === 'petBody' ? 'petBody' : null);
     o.built.setMounted?.(inBody);
     if (bp && hostObj) {
       if (g.parent !== hostObj.built.group) hostObj.built.group.add(g);
@@ -262,15 +268,15 @@ export class Scene3D {
   }
 
   /** Il servo dentro Luna: i 3 fili escono dal buco dietro il corpo. */
-  private relead(o: PartObj, inBody: boolean) {
+  private relead(o: PartObj, host: string | null) {
     const set = o.built.setLeads;
     if (!set) return;
-    if (!inBody) {
+    if (!host) {
       set(null);
       for (const t of PARTS.servo.terminals) o.terminals.get(t.id)!.position.set(...t.pos);
       return;
     }
-    const bp = bodyPose('servo')!;
+    const bp = hostPose(host, 'servo')!;
     const inv = new THREE.Matrix4().compose(bp.pos, bp.quat, new THREE.Vector3(1, 1, 1)).invert();
     const ends = petLeadEnds().map(v => v.applyMatrix4(inv));
     set(ends);
@@ -286,6 +292,30 @@ export class Scene3D {
     (this.scene.background as THREE.Color).set(on ? 0x2a2d45 : 0xf5f0ea);
   }
 
+  /** Catapulta: dov'è la pallina nel cucchiaio (in coordinate del banco). */
+  ballWorld(armId: string) {
+    const b = this.objs.get(armId)?.built.group.getObjectByName('ball');
+    return b ? b.getWorldPosition(new THREE.Vector3()) : null;
+  }
+  setBall(armId: string, on: boolean) {
+    const b = this.objs.get(armId)?.built.group.getObjectByName('ball');
+    if (b) b.visible = on;
+  }
+  private flying: { m: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; t0: number; dur: number; h: number } | null = null;
+  private landed: THREE.Mesh | null = null;
+  /** La pallina vola dal cucchiaio fino a dove cade (parabola). */
+  throwBall(from: THREE.Vector3, to: THREE.Vector3) {
+    this.landed?.removeFromParent();
+    this.flying?.m.removeFromParent();
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(0xd4d8de, { metalness: 0.7, roughness: 0.35, flatShading: true }));
+    m.castShadow = true;
+    m.position.copy(from);
+    this.scene.add(m);
+    const d = Math.hypot(to.x - from.x, to.z - from.z);
+    this.flying = { m, from: from.clone(), to: to.clone(), t0: performance.now(), dur: 450 + d * 30, h: 3 + d * 0.35 };
+  }
+  clearBalls() { this.landed?.removeFromParent(); this.landed = null; this.flying?.m.removeFromParent(); this.flying = null; }
+
   private bumps = new Map<string, number>();
   /** Un passo: il pezzo fa un saltello (la gamba che cammina). */
   bump(id: string) {
@@ -294,8 +324,25 @@ export class Scene3D {
   }
 
   setServo(id: string, angle: number) {
-    const horn = this.objs.get(id)?.built.horn;
+    const o = this.objs.get(id);
+    const horn = o?.built.horn;
     if (horn) horn.rotation.y = ((angle - 90) * Math.PI) / 180;
+    // mostro del latte: il servo sul tetto tira con un filo la bocca
+    const host = o?.inst.attachedTo ? this.objs.get(o.inst.attachedTo) : null;
+    if (horn && host?.inst.type === 'milkCarton') {
+      const hg = host.built.group;
+      const jaw = hg.getObjectByName('jaw');
+      const string = hg.getObjectByName('string') as THREE.Line | undefined;
+      if (jaw) jaw.rotation.x = -jawOpen(angle);
+      if (jaw && string) {
+        hg.updateWorldMatrix(true, true);
+        const tip = horn.localToWorld(new THREE.Vector3(2.5, 0, 0));
+        const knot = jaw.getObjectByName('jaw-knot')!.getWorldPosition(new THREE.Vector3());
+        const inv = hg.matrixWorld.clone().invert();
+        (string.geometry as THREE.BufferGeometry).setFromPoints([tip.applyMatrix4(inv), knot.applyMatrix4(inv)]);
+        string.visible = true;
+      }
+    }
   }
 
   setDisplay(id: string, leds: Uint8Array) {
@@ -778,7 +825,10 @@ export class Scene3D {
       for (const s of this.objs.values()) {
         if (!s.built.horn || s.inst.id === id) continue;
         const tip = s.built.horn.localToWorld(new THREE.Vector3(1.4, 0, 0));
-        if (Math.hypot(tip.x - pos.x, tip.z - pos.z) < 4.5) return s.inst.id;
+        // il braccio può essere in alto: conta anche il punto del banco "sotto" il braccio, visto dalla telecamera
+        const c = this.camera.position, dir = tip.clone().sub(c);
+        const proj = dir.y < -1e-3 ? c.clone().add(dir.multiplyScalar(-c.y / dir.y)) : tip;
+        if (Math.min(Math.hypot(tip.x - pos.x, tip.z - pos.z), Math.hypot(proj.x - pos.x, proj.z - pos.z)) < 4.5) return s.inst.id;
       }
       return null;
     }

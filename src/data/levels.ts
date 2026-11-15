@@ -18,7 +18,7 @@ export interface LevelCtx {
   runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
   icon: string;           // il disegno che il micro:bit mostra adesso ('' = spento)
   tested: Record<string, boolean>; // oggetti provati sul piano di prova: conduce sì/no
-  game: { touches: number; finished: boolean; played: boolean }; // gioco del filo / caccia al tesoro
+  game: { touches: number; finished: boolean; played: boolean; throws: number; hits: number }; // filo, tesoro, catapulta
   friend: RunStats | null;  // il micro:bit dell'amico (radio)
 }
 
@@ -705,13 +705,146 @@ basic.forever(function () {
       safety: [['adulto', 'La finestrella del servo è piccola: tagliala con un adulto.'], ['solo', 'Ritaglia, piega e incolla con la colla stick.'], ['solo', 'Attacca i coccodrilli ai fili del servo e alla stagnola.']],
     },
   },
+  {
+    id: 'mostro',
+    lesson: 4,
+    title: 'Il mostro del latte',
+    icon: 'gi:milk-carton',
+    intro: 'Un cartone del latte diventa un mostro affamato: con A apre la bocca, con B la chiude!',
+    palette: ['microbit', 'battery', 'servo', 'milkCarton', 'scissors', 'hotGlue'],
+    start: {
+      parts: [
+        { id: 'mb1', type: 'microbit', x: -12, z: 6, rot: 0 },
+        { id: 'bat1', type: 'battery', x: -12, z: -4, rot: 0 },
+      ],
+      wires: [{ id: 'w-pow', a: 'bat1:PLUG', b: 'mb1:BAT', color: 'bianco' }],
+    },
+    code: `servos.P0.setAngle(180)
+basic.showIcon(IconNames.Happy)
+input.onButtonPressed(Button.A, function () {
+    servos.P0.setAngle(100)
+})
+input.onButtonPressed(Button.B, function () {
+    servos.P0.setAngle(180)
+})
+`,
+    namespaces: ['basic', 'input', 'servos'],
+    dependencies: { core: '*', servo: '*' },
+    steps: [
+      {
+        title: 'La testa del mostro', mode: 'build', text: 'Trascina il cartone del latte sul banco: è la testa del mostro.',
+        goal: c => has(c, 'milkCarton'),
+        why: { q: 'Come si fa quello vero?', a: 'Un adulto ritaglia la bocca nel cartone: taglia tre lati e lascia attaccato quello in alto. Poi tu disegni occhi e denti.' },
+      },
+      {
+        title: 'Il servo sulla testa', mode: 'build', text: 'Trascina il servo sopra il cartone: si mette sul tetto. Un filo va dal suo braccio alla bocca.',
+        goal: c => onHost(c, 'servo', 'milkCarton'),
+        why: { q: 'Come si apre la bocca?', a: 'Il braccio del servo tira un filo legato alla bocca, come un burattino. Nel mondo vero il servo si incolla sul tappo.' },
+      },
+      {
+        title: 'Collega il servo', mode: 'wire', text: 'Tocca la fine di un filo del servo, poi il suo posto sul micro:bit.',
+        goal: servoOk,
+        checklist: c => {
+          const s = c.parts.find(p => p.type === 'servo');
+          const mb = c.parts.find(p => p.type === 'microbit');
+          const ok = (t: string, target: string) => !!s && !!mb && c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${target}`);
+          return [
+            { label: 'Marrone → GND', color: '#7A4A22', done: ok('GND', 'GND') },
+            { label: 'Rosso → 3V', color: '#E5484D', done: ok('VCC', '3V') },
+            { label: 'Arancione → pin 0', color: '#F7941D', done: ok('SIG', 'P0') },
+          ];
+        },
+      },
+      {
+        title: 'Apri la bocca', mode: 'code', text: 'Premi Prova! Poi premi A: il mostro apre la bocca. Ha fame!',
+        goal: c => c.running && !!c.stats && c.stats.buttons.has('A') && c.servoMoves >= 1,
+        why: { q: 'Cosa vogliono dire 100 e 180?', a: 'Sono le posizioni del braccio. A 180 il filo è lento e la bocca è chiusa. A 100 il braccio gira, tira il filo e la bocca si apre.' },
+      },
+      {
+        title: 'Chiudi la bocca', mode: 'code', text: 'Ora premi B: il mostro chiude la bocca. Gnam!',
+        goal: c => c.running && !!c.stats && c.stats.buttons.has('B') && c.servoMoves >= 2,
+      },
+      {
+        title: 'Cambialo tu!', mode: 'code', text: 'Fai aprire la bocca solo un pochino: cambia 100 con 140. Poi premi Prova! e A.',
+        goal: c => c.runInStep && !/setAngle\(100\)/.test(c.code) && !!c.stats && c.stats.buttons.has('A') && c.servoMoves >= 1,
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2 e 2 pile AAA', 'un servo SG90', '3 cavi a coccodrillo', 'un cartone del latte vuoto e lavato', 'un pezzo di spago (va bene quello di una bustina di tè)', 'colla a caldo (la usa l\'adulto), pennarelli'],
+      safety: [['adulto', 'Ritagliare la bocca nel cartone: lo fa un adulto.'], ['soloAdulto', 'La colla a caldo la usa solo l\'adulto.'], ['solo', 'Attacca i coccodrilli ai fili del servo.']],
+    },
+  },
+  {
+    id: 'catapulta',
+    lesson: 4,
+    title: 'La catapulta',
+    icon: 'gi:catapult',
+    intro: 'Il servo fa scattare un cucchiaio e la pallina vola! Riesci a colpire il bersaglio?',
+    palette: ['microbit', 'battery', 'servo', 'catapultArm', 'hotGlue'],
+    start: {
+      parts: [
+        { id: 'mb1', type: 'microbit', x: -14, z: 8, rot: 0 },
+        { id: 'bat1', type: 'battery', x: -14, z: -2, rot: 0 },
+        { id: 'cb1', type: 'catapultBase', x: 4, z: 10, rot: 0 },
+        { id: 'bk1', type: 'bucket', x: 3, z: -6, rot: 0 },
+      ],
+      wires: [{ id: 'w-pow', a: 'bat1:PLUG', b: 'mb1:BAT', color: 'bianco' }],
+    },
+    code: `servos.P0.setAngle(0)
+input.onButtonPressed(Button.A, function () {
+    servos.P0.setAngle(150)
+    basic.pause(1000)
+    servos.P0.setAngle(0)
+})
+`,
+    namespaces: ['basic', 'input', 'servos'],
+    dependencies: { core: '*', servo: '*' },
+    steps: [
+      {
+        title: 'Il servo sulla base', mode: 'build', text: 'La base di cartone e il bersaglio blu sono già pronti. Trascina il servo sopra la base: si sdraia con il braccio di lato.',
+        goal: c => onHost(c, 'servo', 'catapultBase'),
+      },
+      {
+        title: 'Il cucchiaio', mode: 'build', text: 'Trascina il braccio con il cucchiaio sopra il braccio bianco del servo. Dentro c\'è già la pallina.',
+        goal: c => c.parts.some(p => p.type === 'catapultArm' && c.parts.find(s => s.id === p.attachedTo)?.type === 'servo'),
+      },
+      {
+        title: 'Collega il servo', mode: 'wire', text: 'Tocca la fine di un filo del servo, poi il suo posto sul micro:bit.',
+        goal: servoOk,
+        checklist: c => {
+          const s = c.parts.find(p => p.type === 'servo');
+          const mb = c.parts.find(p => p.type === 'microbit');
+          const ok = (t: string, target: string) => !!s && !!mb && c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${target}`);
+          return [
+            { label: 'Marrone → GND', color: '#7A4A22', done: ok('GND', 'GND') },
+            { label: 'Rosso → 3V', color: '#E5484D', done: ok('VCC', '3V') },
+            { label: 'Arancione → pin 0', color: '#F7941D', done: ok('SIG', 'P0') },
+          ];
+        },
+      },
+      {
+        title: 'Lancia!', mode: 'code', text: 'Premi Prova! Poi premi A: il cucchiaio scatta e la pallina vola!',
+        goal: c => c.running && c.game.throws >= 1,
+        why: { q: 'Perché la pallina vola?', a: 'Il servo gira veloce da 0 a 150. Il cucchiaio si ferma di colpo, ma la pallina continua ad andare: vola via!' },
+      },
+      {
+        title: 'Colpisci il bersaglio', mode: 'code', text: 'La pallina va troppo lontano! Metti un numero più piccolo al posto di 150, per esempio 120. Poi premi Prova! e A.',
+        goal: c => c.runInStep && !/setAngle\(150\)/.test(c.code) && c.game.hits >= 1,
+        why: { q: 'Come scelgo il numero?', a: 'Più il braccio gira, più la pallina va lontano. Se cade prima del bersaglio, metti un numero più grande. Se va oltre, più piccolo. Prova e riprova: così fanno gli scienziati!' },
+      },
+    ],
+    real: {
+      materials: ['un micro:bit V2 e 2 pile AAA', 'un servo SG90', '3 cavi a coccodrillo', 'una scatola piccola, un bastoncino del gelato, un tappo di bottiglia', 'palline di carta o stagnola', 'colla a caldo (la usa l\'adulto) o nastro biadesivo'],
+      safety: [['soloAdulto', 'La colla a caldo la usa solo l\'adulto.'], ['solo', 'Lancia solo palline di carta, mai verso le persone.'], ['solo', 'Attacca i coccodrilli ai fili del servo.']],
+    },
+  },
 ];
 
 export const LESSONS: LessonDef[] = [
   { n: 1, title: 'Primi passi', projects: [{ icon: 'gi:heart-beats', title: 'Il cuore che batte', level: 'cuore' }, { icon: 'gi:footprint', title: 'Il contapassi', level: 'contapassi' }, { icon: 'gi:moon', title: 'La luce notturna', level: 'lucenotte' }, { icon: 'gi:rock', title: 'Sasso, carta, forbice', level: 'sasso' }] },
   { n: 2, title: 'Il laboratorio dello scienziato', projects: [{ icon: 'gi:lightning-electron', title: 'Il tester dei conduttori', level: 'tester' }, { icon: 'gi:wire-coil', title: 'Non toccare il filo!', level: 'filo' }, { icon: 'gi:banana', title: 'Il piano di frutta', level: 'frutta' }] },
   { n: 3, title: 'Messaggi senza fili', projects: [{ icon: 'gi:walkie-talkie', title: 'Messaggi segreti', level: 'messaggi' }, { icon: 'gi:open-treasure-chest', title: 'Caccia al tesoro', level: 'tesoro' }] },
-  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte' }, { icon: 'gi:catapult', title: 'La catapulta' }] },
+  { n: 4, title: 'Il servo e i materiali di riciclo', projects: [{ icon: 'gi:labrador-head', title: 'Luna che scodinzola', level: 'paperpet' }, { icon: 'gi:milk-carton', title: 'Il mostro del latte', level: 'mostro' }, { icon: 'gi:catapult', title: 'La catapulta', level: 'catapulta' }] },
   { n: 5, title: 'La macchinina robot', projects: [{ icon: 'gi:tv-remote', title: 'Guida col telecomando' }, { icon: 'gi:race-car', title: 'Lo slalom' }] },
   { n: 6, title: 'Il robot intelligente', projects: [{ icon: 'gi:radar-sweep', title: 'Il robot che evita i muri' }, { icon: 'gi:podium-winner', title: 'La grande Expo' }] },
 ];

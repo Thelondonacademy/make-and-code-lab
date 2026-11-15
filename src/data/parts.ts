@@ -1,7 +1,7 @@
 // Catalogo dei pezzi: componenti elettronici, materiali di riciclo e attrezzi.
 // Le schede ("card") sono scritte per bambini di 6-8 anni: frasi corte, parole semplici.
 
-export type Mount = 'horn' | 'petBody' | 'strap' | 'cardStand' | 'testPad';
+export type Mount = 'horn' | 'petBody' | 'strap' | 'cardStand' | 'testPad' | 'milkCarton' | 'catapultBase';
 export type Category = 'cervello' | 'energia' | 'movimento' | 'luci' | 'collegamenti' | 'materiali' | 'attrezzi';
 export type Safety = 'solo' | 'adulto' | 'soloAdulto';
 export type TerminalKind = 'pad' | 'lead' | 'socket' | 'plug';
@@ -32,7 +32,7 @@ export interface PartDef {
   terminals: TerminalDef[];
   material?: boolean;    // materiale di riciclo: si può attaccare al braccio del servo
   mountOn?: Mount;
-  mountAlso?: Mount; // un secondo posto dove si può attaccare
+  mountAlso?: Mount | Mount[]; // altri posti dove si può attaccare
   conductive?: boolean; // fa passare l'elettricità (tester dei conduttori) // dove si attacca quando lo trascini sopra (predefinito per i materiali: il braccio del servo)
   tool?: boolean;        // attrezzo: solo scheda, non va sul banco
   size: [number, number, number]; // ingombro (cm) per posizionare e trascinare
@@ -108,7 +108,7 @@ export const PARTS: Record<string, PartDef> = {
     },
   },
   servo: {
-    type: 'servo', name: 'Servo', category: 'movimento', icon: 'servo.svg', mountOn: 'petBody',
+    type: 'servo', name: 'Servo', category: 'movimento', icon: 'servo.svg', mountOn: 'petBody', mountAlso: ['milkCarton', 'catapultBase'],
     size: [4.8, 4.6, 1.9],
     terminals: [
       { id: 'GND', label: 'filo marrone', kind: 'lead', color: '#7A4A22', pos: [-4.4, 0.25, 0.75] },
@@ -359,6 +359,47 @@ export const PARTS: Record<string, PartDef> = {
     size: [3.4, 3.4, 3.4], terminals: [{ id: 'F', label: 'arancia', kind: 'pad', pos: [1.75, 1.6, 0] }],
     card: { cosa: 'Un\'arancia collegata al GND. La tieni in mano mentre suoni.', come: ['Con una mano tieni l\'arancia, con l\'altra tocchi la frutta.', 'L\'elettricità passa dalla frutta, attraverso il tuo corpo, fino all\'arancia: il circuito si chiude!'], sicurezza: [['solo', 'Tenere l\'arancia e suonare. La corrente è piccolissima: non si sente.']], mondo: 'un\'arancia e un coccodrillo dal GND' },
   },
+  milkCarton: {
+    type: 'milkCarton', name: 'Cartone del latte', category: 'materiali', icon: 'milk.svg',
+    size: [6, 11.5, 6], terminals: [],
+    card: {
+      cosa: 'Un cartone del latte vuoto e pulito: diventa la testa del mostro!',
+      come: ['Il servo sta sopra la testa. Un filo va dal suo braccio alla bocca: quando il braccio gira, tira il filo e la bocca si apre.', 'Con il pulsante A la bocca si apre, con il pulsante B si chiude.'],
+      sicurezza: [['adulto', 'Ritagliare la bocca nel cartone: lo fa un adulto.'], ['solo', 'Decorare il mostro: occhi, denti, capelli.']],
+      mondo: 'un cartone del latte o del succo, lavato e asciutto',
+    },
+  },
+  catapultBase: {
+    type: 'catapultBase', name: 'Base della catapulta', category: 'materiali', icon: 'catapult-base.svg',
+    size: [7, 3, 9], terminals: [],
+    card: {
+      cosa: 'Una scatola di cartone: è la base della catapulta.',
+      come: ['Il servo si sdraia sopra la scatola, con il braccio di lato.', 'Il braccio lancia la pallina in avanti.'],
+      sicurezza: [['adulto', 'Fissare il servo con la colla a caldo o il nastro biadesivo.']],
+      mondo: 'una scatola di cartone piccola (va bene quella delle scarpe da bambino)',
+    },
+  },
+  catapultArm: {
+    type: 'catapultArm', name: 'Braccio con cucchiaio', category: 'materiali', icon: 'catapult-arm.svg', material: true,
+    size: [8, 1, 1.6], terminals: [],
+    card: {
+      cosa: 'Un bastoncino del gelato con un tappo in cima: è il cucchiaio che lancia la pallina.',
+      come: ['Si attacca al braccio del servo. Quando il servo gira veloce, la pallina vola!', 'Più il braccio gira, più la pallina va lontano.'],
+      sicurezza: [['adulto', 'Fissarlo al braccio del servo con la colla a caldo.']],
+      attenzione: 'Lancia solo palline di carta, e mai verso le persone.',
+      mondo: 'un bastoncino del gelato, un tappo di bottiglia, una pallina di carta o stagnola',
+    },
+  },
+  bucket: {
+    type: 'bucket', name: 'Bersaglio', category: 'materiali', icon: 'bucket.svg',
+    size: [5, 2.5, 5], terminals: [],
+    card: {
+      cosa: 'Una scatola o un bicchiere grande: il bersaglio da colpire.',
+      come: ['Mettilo davanti alla catapulta. Riesci a far cadere la pallina dentro?'],
+      sicurezza: [['solo', 'Spostare il bersaglio per rendere il gioco più facile o più difficile.']],
+      mondo: 'una scatola aperta o un cestino',
+    },
+  },
   glueStick: {
     type: 'glueStick', name: 'Colla stick e nastro', category: 'attrezzi', icon: 'glue-stick.svg', safety: 'solo', tool: true,
     size: [0, 0, 0], terminals: [],
@@ -392,12 +433,12 @@ export const PARTS: Record<string, PartDef> = {
   },
 };
 
-export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'apple', 'lemon', 'orange', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
+export const PALETTE_ORDER = ['microbit', 'battery', 'usb', 'servo', 'led', 'resistor', 'petBody', 'petLegs', 'petFace', 'petTail', 'foilPatch', 'strap', 'cardStand', 'testPad', 'coin', 'banana', 'eraser', 'plasticCap', 'buzzWire', 'apple', 'lemon', 'orange', 'milkCarton', 'catapultBase', 'catapultArm', 'bucket', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall', 'glueStick', 'scissors', 'hotGlue'];
 
 /** Dove si attacca un pezzo trascinato sopra un altro. */
 export const mountOf = (type: string): Mount | null => PARTS[type]?.mountOn ?? (PARTS[type]?.material ? 'horn' : null);
 /** Tutti i posti dove un pezzo si può attaccare (il micro:bit va sia sulla fascia sia sul leggio). */
-export const mountsOf = (type: string): Mount[] => [mountOf(type), PARTS[type]?.mountAlso].filter((m): m is Mount => !!m);
+export const mountsOf = (type: string): Mount[] => [mountOf(type), ...([] as (Mount | undefined)[]).concat(PARTS[type]?.mountAlso ?? [])].filter((m): m is Mount => !!m);
 
 export const SAFETY_LABEL: Record<Safety, string> = { solo: 'Da solo', adulto: 'Con un adulto', soloAdulto: "Solo l'adulto" };
 

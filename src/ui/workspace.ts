@@ -275,7 +275,7 @@ export class Workspace {
       onLogo: down => this.rt.touchLogo(down),
       onPad: (pin, down) => this.rt.touchPin(pin, down),
       onFoil: (id, down) => this.touchFoil(id, down),
-      onFrame: dt => { this.hw.step(dt); if (this.selIds.length || this.selWire) this.positionSelTools(); },
+      onFrame: dt => { this.hw.step(dt); this.catapultFrame(); if (this.selIds.length || this.selWire) this.positionSelTools(); },
       onDrop: (type, x, z) => this.addPart(type, x, z),
     });
     this.scene.onHover = (ref, x, y) => {
@@ -659,7 +659,7 @@ export class Workspace {
       m.close();
       this.stopRun();
       this.tested = {};
-      this.game = { touches: 0, finished: false, played: false };
+      this.game = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
       clearWork(this.level.id);
       this.parts = structuredClone(this.level.start.parts);
       this.wires = structuredClone(this.level.start.wires);
@@ -788,7 +788,9 @@ export class Workspace {
     this.hw.reset();
     const err = this.rt.start(this.code);
     if (err) return;
-    this.game.finished = false; // ogni prova nuova: il gioco (filo, tesoro) si rifà da capo
+    this.game.finished = false; // ogni prova nuova: il gioco (filo, tesoro, catapulta) si rifà da capo
+    this.game.throws = 0; this.game.hits = 0;
+    this.scene.clearBalls();
     this.startFriends();
     if (this.codeChanged) this.ranChanged = true;
     this.runEpoch = this.stepEpoch;
@@ -870,8 +872,50 @@ export class Workspace {
     this.friends.clear();
   }
 
+  // ---------- la catapulta ----------
+  private cata = new Map<string, { loaded: boolean; start: number }>();
+  /** Il braccio carico (indietro) che gira veloce in avanti lancia la pallina: più gira, più va lontano. */
+  private catapultFrame() {
+    for (const arm of this.parts.filter(p => p.type === 'catapultArm' && p.attachedTo)) {
+      const sv = this.parts.find(p => p.id === arm.attachedTo);
+      const base = sv && this.parts.find(p => p.id === sv.attachedTo && p.type === 'catapultBase');
+      if (!sv || !base) continue;
+      const a = this.hw.servoAngle.get(sv.id) ?? 90;
+      const target = this.hw.servoTarget.get(sv.id) ?? a;
+      let st = this.cata.get(arm.id);
+      if (!st) { st = { loaded: a <= 25, start: a }; this.cata.set(arm.id, st); this.scene.setBall(arm.id, st.loaded); }
+      if (!this.running) { if (!st.loaded) { st.loaded = true; this.scene.setBall(arm.id, true); } st.start = a; continue; }
+      if (a <= 25 && !st.loaded) { st.loaded = true; this.scene.setBall(arm.id, true); }
+      if (st.loaded && a <= 25) st.start = Math.min(st.start, a);
+      if (st.loaded && Math.abs(target - a) < 0.5 && a - st.start >= 40) {
+        const swing = a - st.start;
+        const from = this.scene.ballWorld(arm.id);
+        st.loaded = false; st.start = a;
+        this.scene.setBall(arm.id, false);
+        if (!from) continue;
+        const ang = ((base.rot || 0) * Math.PI) / 4;
+        let fwd = { x: -Math.sin(ang), z: -Math.cos(ang) }; // davanti alla base (verso -z)
+        const bk = this.parts.find(p => p.type === 'bucket');
+        if (bk) {
+          // se il bersaglio è più o meno davanti, la catapulta è puntata verso di lui: conta solo quanto lontano lanci
+          const bx = bk.x - from.x, bz = bk.z - from.z, bl = Math.hypot(bx, bz) || 1;
+          if ((bx * fwd.x + bz * fwd.z) / bl > Math.cos((70 * Math.PI) / 180)) fwd = { x: bx / bl, z: bz / bl };
+        }
+        const d = Math.max(0, swing - 30) * 0.15;
+        const land = new (from.constructor as any)(from.x + fwd.x * d, 0.55, from.z + fwd.z * d);
+        this.scene.throwBall(from, land);
+        this.game.throws++;
+        const hit = !!bk && Math.hypot(land.x - bk.x, land.z - bk.z) < 3;
+        if (hit) this.game.hits++;
+        const short = bk ? Math.hypot(land.x - from.x, land.z - from.z) < Math.hypot(bk.x - from.x, bk.z - from.z) : false;
+        setTimeout(() => toast(hit ? `${img('bullseye.svg', 26)}Centro! La pallina è nel bersaglio.` : `${img('catapult-arm.svg', 26)}${short ? 'Troppo corto: fai girare il braccio di più (numero più grande).' : 'Troppo lontano: fai girare il braccio di meno (numero più piccolo).'}`, { kind: hit ? 'ok' : 'info', ms: 2800 }), 500 + d * 30);
+        this.evaluate();
+      }
+    }
+  }
+
   // ---------- gioco del filo ----------
-  game = { touches: 0, finished: false, played: false };
+  game = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
   private buzz: BuzzGame | null = null;
   /** L'anello tocca il filo: chiude il circuito tra il pin collegato e il GND, se i cavi sono giusti. */
   private buzzTouch(on: boolean) {
@@ -1335,6 +1379,7 @@ export class Workspace {
       huntState: () => this.hunt?.testState() ?? null,
       huntMove: (x: number, y: number) => this.hunt?.testMove(x, y),
       huntClose: () => this.hunt?.close(),
+      servoAngles: () => Object.fromEntries(this.hw.servoAngle),
       buzzPath: () => this.buzz?.clientPath() ?? [],
       buzzClose: () => this.closeBuzz(),
       mode: (m: Mode) => this.setMode(m),

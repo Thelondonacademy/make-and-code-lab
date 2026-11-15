@@ -470,3 +470,18 @@ radio.sendNumber(0)`);
     ra.stop(); rb.stop();
   });
 });
+
+describe('Mostro del latte e catapulta', () => {
+  it('la bocca: 180 chiusa, 100 tutta aperta', async () => {
+    const { jawOpen } = await import('../src/scene/builders');
+    expect(jawOpen(180)).toBe(0);
+    expect(jawOpen(100)).toBeCloseTo(1.15);
+    expect(jawOpen(140)).toBeGreaterThan(0);
+    expect(jawOpen(140)).toBeLessThan(jawOpen(100));
+  });
+  it('il servo si monta su Luna, sul mostro e sulla catapulta', async () => {
+    const { mountsOf } = await import('../src/data/parts');
+    expect(mountsOf('servo')).toEqual(['petBody', 'milkCarton', 'catapultBase']);
+    expect(mountsOf('catapultArm')).toEqual(['horn']);
+  });
+});
