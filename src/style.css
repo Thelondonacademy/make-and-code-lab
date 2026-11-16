@@ -90,7 +90,7 @@ img { flex: none; }
 .chip-btn { height: 38px; padding: 0 12px; border-radius: 999px; border: 2px solid var(--bd, var(--line)); background: var(--bg, #fff); color: var(--fg, var(--ink)); font-weight: 700; font-size: 13px; cursor: pointer; }
 .chip-btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
 .parts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.part { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 6px 10px; border-radius: 18px; border: 2px solid var(--bd); background: var(--bg); color: var(--ink); font-weight: 700; font-size: 13.5px; text-align: center; cursor: grab; user-select: none; }
+.part { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 12px 6px 10px; border-radius: 18px; border: 2px solid var(--bd); background: var(--cream); color: var(--ink); font-weight: 700; font-size: 13.5px; text-align: center; cursor: grab; user-select: none; }
 .part:hover { transform: translateY(-2px); box-shadow: 0 4px 0 var(--line); }
 .part:active { cursor: grabbing; }
 .part-name { line-height: 1.2; }
@@ -583,7 +583,7 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
 /* ---------- scelta a tre: luce della stanza (luna, lampada, sole), elastici della catapulta (1, 2, 3) ---------- */
 .mb-seg { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 4px; border-radius: 30px; background: #fff; border: 3px solid var(--line); }
 .mb-segl { font-size: 14px; font-weight: 700; padding: 0 4px 0 8px; color: var(--ink); }
-.mb-segb { width: 46px; height: 46px; border-radius: 50%; border: 3px solid transparent; background: var(--bg); color: var(--grey); font-family: inherit; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mb-segb { width: 46px; height: 46px; border-radius: 50%; border: 3px solid transparent; background: var(--cream); color: var(--grey); font-family: inherit; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .mb-segb.on { background: #FFE9A8; border-color: #E8A33D; color: var(--ink); }
 .mb-segb:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
 @media (max-width: 760px), (max-height: 520px) and (orientation: landscape) { .mb-seg { margin-left: 0; } .mb-segb { width: 44px; height: 44px; } }
@@ -603,3 +603,64 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
 .hint-run .mb-pet, .hint-run .mb-seg, .hint-run .mb-btn { flex-shrink: 0; }
 .mb-btn.mb-pet { width: auto; }
 @media (max-height: 520px) and (orientation: landscape) { .mb-btn { width: 44px; height: 44px; } .mb-btn.mb-pet, .mb-btn.mb-ab { width: auto; } }
+
+/* ---------- una cosa alla volta: i pallini delle azioni e l'azione nuova che lampeggia ---------- */
+.pips { display: inline-flex; gap: 6px; margin: 2px 0 8px; }
+.pips i { width: 22px; height: 8px; border-radius: 4px; background: var(--line); }
+.pips i.done { background: var(--green); }
+.pips i.now { background: var(--orange); }
+.code-step-txt .pips { margin: 4px 0 0; }
+.step-card .pips { margin: -6px 0 12px; }
+.lead-act.flash { animation: actflash .9s ease-out; }
+@keyframes actflash { 0% { background: #FFE9A8; box-shadow: 0 0 0 6px #FFE9A8; } 100% { background: transparent; box-shadow: 0 0 0 6px transparent; } }
+.autoread { margin: 10px auto 0; font-size: 14px; display: flex; }
+.autoread[aria-pressed=false] { color: var(--grey); }
+
+/* ---------- la manina che mostra il gesto ---------- */
+.hand-hint { position: fixed; left: 0; top: 0; z-index: 60; width: 54px; height: 54px; margin: -6px 0 0 -18px; pointer-events: none; color: #1D1C1F; filter: drop-shadow(0 0 0 #fff) drop-shadow(0 3px 5px rgba(0,0,0,.35)); transform-origin: 18px 6px; will-change: transform, opacity; }
+.hand-hint .ico { position: relative; stroke: #fff; stroke-width: 10px; paint-order: stroke; }
+.hand-ring { position: absolute; left: 18px; top: 6px; width: 0; height: 0; }
+.hand-ring::after { content: ''; position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; border: 5px solid var(--orange); opacity: 0; }
+.hand-ring.go::after { animation: handring .55s ease-out; }
+@keyframes handring { 0% { transform: scale(.3); opacity: .95; } 100% { transform: scale(1.5); opacity: 0; } }
+
+/* ---------- la parola nuova e la domanda alla fine del progetto ---------- */
+.word-card { margin: 14px auto 0; max-width: 520px; padding: 14px 18px 16px; border-radius: 20px; background: var(--purple-soft); border: 3px solid #E2CCEE; text-align: center; }
+.word-k { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: .04em; }
+.word-card h3 { margin: 4px 0 6px; font-size: 32px; justify-content: center; }
+.word-card p { margin: 0 0 10px; font-size: 18px; line-height: 1.4; }
+.quiz { margin: 16px auto 0; max-width: 520px; text-align: center; }
+.quiz-q { font-size: 19px; font-weight: 700; margin: 0 0 10px; }
+.quiz-opts { display: grid; gap: 10px; }
+.quiz-opt { min-height: 56px; font-size: 17px; justify-content: center; white-space: normal; line-height: 1.25; padding: 8px 14px; }
+.quiz-opt.right { background: #DDF3E4; border-color: var(--green); color: #14532d; }
+.quiz-opt.wrong { opacity: .5; animation: shake .35s; }
+.quiz-msg { min-height: 26px; margin: 10px 0 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.quiz-msg.ok { color: #14532d; }
+.quiz-skip { margin: 2px auto 0; font-size: 14px; color: var(--grey); display: flex; }
+.finale-more { margin-top: 14px; }
+
+/* ---------- pagina del percorso: le parole imparate ---------- */
+.words { margin: 4px 0 22px; padding: 14px 18px; border-radius: 22px; background: #fff; border: 3px solid var(--line); }
+.words h2 { margin: 0 0 10px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.words h2 small { font-weight: 600; color: var(--grey); font-size: 14px; }
+.word-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.word-chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 3px solid var(--line); background: var(--cream); font-family: inherit; font-size: 15px; font-weight: 700; color: var(--grey); display: inline-flex; align-items: center; gap: 6px; }
+button.word-chip { cursor: pointer; background: var(--purple-soft); border-color: #E2CCEE; color: var(--purple); }
+.word-chip.locked { opacity: .7; }
+.quiz-opt:disabled { opacity: .55; }
+.quiz-opt.right:disabled { opacity: 1; }
+@media (max-width: 760px), (max-height: 520px) and (orientation: landscape) {
+  /* sul telefono la guida è corta, ma l'azione da fare adesso si deve vedere */
+  .guide .lead.lead-act { display: block; font-size: 15px; line-height: 1.3; margin: 0; }
+  .guide .pips { margin: 0; }
+  .word-card h3 { font-size: 26px; }
+  .word-card p { font-size: 16px; }
+}
+@media (max-width: 760px) {
+  /* sul telefono solo le parole già vinte: i lucchetti porterebbero via mezza pagina */
+  .word-chip.locked { display: none; }
+  .words { padding: 10px 14px; margin-bottom: 14px; }
+  .words h2 { margin: 0; }
+  .words:has(button.word-chip) h2 { margin-bottom: 8px; }
+}

@@ -542,3 +542,31 @@ describe('I cavi sul banco', () => {
     expect(Math.abs(a[9][2] - b[9][2])).toBeGreaterThan(0.5);
   });
 });
+
+describe('Una cosa alla volta e parole nuove', () => {
+  it('"Premi Prova! Poi..." e "Premi Ferma. Poi..." si dividono da soli in due azioni', async () => {
+    const { actsOf } = await import('../src/data/levels');
+    const goal = () => false;
+    const a = actsOf({ title: 't', mode: 'code', text: 'Premi Prova! Poi premi la luna: si fa buio.', goal });
+    expect(a.map(x => x.text)).toEqual(['Premi Prova!', 'Premi la luna: si fa buio.']);
+    expect(a[0].done({ running: true } as any)).toBe(true);
+    expect(a[1].done).toBe(goal);
+    const b = actsOf({ title: 't', mode: 'build', text: 'Premi Ferma. Poi trascina lo spago.', goal });
+    expect(b.map(x => x.text)).toEqual(['Premi Ferma.', 'Trascina lo spago.']);
+    expect(b[0].done({ running: false } as any)).toBe(true);
+    expect(actsOf({ title: 't', mode: 'build', text: 'Trascina il servo.', goal })).toHaveLength(1);
+  });
+  it('nessuna azione è più lunga di 16 parole; ogni progetto ha la sua parola con una domanda valida', async () => {
+    const { LEVELS, actsOf } = await import('../src/data/levels');
+    const long: string[] = [];
+    for (const l of LEVELS) {
+      for (const s of l.steps) for (const a of actsOf(s)) if (a.text.split(/\s+/).length > 16) long.push(`${l.id}: ${a.text}`);
+      expect(l.word, l.id).toBeTruthy();
+      expect(l.word!.quiz.options).toHaveLength(3);
+      expect(l.word!.quiz.answer).toBeGreaterThanOrEqual(0);
+      expect(l.word!.quiz.answer).toBeLessThan(3);
+    }
+    expect(long).toEqual([]);
+    expect(new Set(LEVELS.map(l => l.word!.term)).size).toBe(LEVELS.length);
+  });
+});

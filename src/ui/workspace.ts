@@ -1,6 +1,8 @@
 // Il laboratorio: banco 3D, tavolozza dei pezzi, guida passo passo, MakeCode e "Prova!".
 import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER, mountsOf } from '../data/parts';
 import type { Level, Mode, LevelCtx } from '../data/levels';
+import { actsOf } from '../data/levels';
+import { HandHint } from './handhint';
 import { analyze, canConnect, Issue, PartInst, Wire, Analysis, PIN_PADS } from '../sim/circuit';
 import { MicrobitRuntime, RadioBus, Bridge } from '../sim/runtime';
 import { Hardware } from '../sim/hardware';
@@ -14,7 +16,7 @@ import { BuzzGame } from './buzzgame';
 import { HuntGame } from './huntgame';
 import { speak, canSpeak, stopSpeaking } from '../speech';
 import { tone, cheer } from '../audio';
-import { loadWork, saveWork, clearWork, saveStars, loadProgress } from '../store';
+import { loadWork, saveWork, clearWork, saveStars, loadProgress, saveWord, getAutoRead, setAutoRead } from '../store';
 const FRUITS = new Set(['banana', 'apple', 'lemon', 'orange']);
 const PUB: string = (import.meta as any).env?.BASE_URL || './';
 
@@ -100,6 +102,11 @@ export class Workspace {
     window.addEventListener('keydown', this.onKey);
     (window as any).__mcl = this.testApi();
     if (this.level.steps.length) setTimeout(() => this.openStepPop(false), 400);
+    // la manina: riparte da zero ogni volta che il bambino tocca qualcosa
+    const awake = () => { this.idleAt = performance.now(); if (this.hand.active) this.hand.hide(); };
+    this.root.addEventListener('pointerdown', awake, true);
+    this.root.addEventListener('keydown', awake, true);
+    this.tickTimer = window.setInterval(() => this.tick(), 500);
   }
 
   dispose() {
@@ -109,6 +116,8 @@ export class Workspace {
     this.stopFriends();
     this.rt.stop();
     stopSpeaking();
+    clearInterval(this.tickTimer);
+    this.hand.dispose();
     clearTimeout(this.advanceTimer);
     clearInterval(this.evalTimer);
     this.scene.dispose();
@@ -414,7 +423,8 @@ export class Workspace {
       }
       case 'prev': this.goStep(this.step - 1); break;
       case 'next': this.goStep(this.step + 1); break;
-      case 'listen': { const s = this.level.steps[this.step]; if (s) speak(`${s.title}. ${s.text}`); break; }
+      case 'listen': { const s = this.level.steps[this.step]; if (s) speak(`${s.title}. ${this.stepText()}`); break; }
+      case 'autoread': { const on = !getAutoRead(); setAutoRead(on); if (!on) stopSpeaking(); else this.readStep(); this.renderGuide(); if (!this.q('.step-pop').hidden) this.openStepPop(true); break; }
       case 'show-issue': this.showIssue(); break;
       case 'listen-issue': { const i = this.shown[this.issueIdx]; if (i) speak(`${i.title}. ${i.text}`); break; }
       case 'next-issue': this.issueIdx++; this.renderIssues(); break;
@@ -1107,7 +1117,7 @@ export class Workspace {
   }
 
   // ---------- gioco del filo ----------
-  game = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
+  game: LevelCtx['game'] = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
   private buzz: BuzzGame | null = null;
   /** L'anello tocca il filo: chiude il circuito tra il pin collegato e il GND, se i cavi sono giusti. */
   private buzzTouch(on: boolean) {
@@ -1284,7 +1294,8 @@ export class Workspace {
       stats: this.running ? this.rt.stats : null, servoMoves: this.hw.servoMoves, code: this.code,
       codeChangedSinceStart: this.codeChanged, ranChangedCode: this.ranChanged,
       runInStep: this.running && this.runEpoch === this.stepEpoch && norm(this.runCode) === norm(this.code),
-      icon: this.running ? this.rt.lastIcon : '', tested: this.tested, game: this.game,
+      icon: this.running ? this.rt.lastIcon : '', tested: this.tested,
+      game: Object.assign(this.game, { bands: this.bands, loaded: [...this.cata.values()].some(c => c.loaded) }),
       friend: this.running ? [...this.friends.values()][0]?.stats ?? null : null,
       angles: Object.fromEntries(this.hw.servoAngle),
     };
@@ -1295,7 +1306,9 @@ export class Workspace {
     if (!steps.length || this.finished) return;
     const s = steps[this.step];
     if (!s || this.doneSteps.has(this.step)) return;
-    if (!s.goal(this.ctx())) return;
+    const c = this.ctx();
+    this.refreshAct(c);
+    if (!s.goal(c)) return;
     this.doneSteps.add(this.step);
     cheer();
     this.renderGuide();
@@ -1315,6 +1328,8 @@ export class Workspace {
     this.step = n;
     this.stepEpoch++;
     this.persist();
+    this.actIdx = this.actNow();
+    this.idleAt = performance.now();
     const m = steps[n].mode;
     if (m !== this.mode) this.setMode(m, false);
     else if (!this.running) this.frame(); // la vista segue il passo: torna a far vedere i pezzi che servono
@@ -1343,7 +1358,7 @@ export class Workspace {
     g.innerHTML = `
       <div class="guide-top"><span class="step-n">Passo ${this.step + 1} di ${L.steps.length}</span><span class="dots">${dots}</span></div>
       <div class="guide-title"><h2>${esc(s.title)}</h2><button class="icon-btn guide-help" data-act="step-open" aria-label="Cosa devo fare?">${icon('ph:question-fill', 22)}</button></div>
-      <p class="lead">${esc(s.text)}</p>
+      <p class="lead lead-act">${esc(this.stepText())}</p>${this.pips()}
       ${canSpeak() ? `<button class="btn btn-soft" data-act="listen">${icon('ph:speaker-high-fill', 22)}Ascolta</button>` : ''}
       ${list ? `<ul class="check">${list.map((c, i) => `<li class="${c.done ? 'ok' : ''}"><span class="ck">${c.done ? icon('ph:check-bold', 18) : i + 1}</span>${c.color ? `<span class="sw" style="background:${c.color}"></span>` : ''}<span>${esc(c.label)}</span></li>`).join('')}</ul>` : ''}
       ${done ? `<div class="bravo">${img('party-popper.svg', 34)}<b>Bravo!</b></div>` : ''}
@@ -1354,7 +1369,7 @@ export class Workspace {
       </div>
       ${L.real.printable ? `<a class="link-btn link-print" href="${PUB + L.real.printable.file}" download target="_blank" rel="noopener">${icon('ph:download-simple-bold', 16)}${esc(L.real.printable.label)}</a>` : ''}
       <button class="link-btn" data-act="restart">${icon('ph:arrow-counter-clockwise-bold', 16)}Ricomincia il progetto</button>`;
-    this.q('.code-step').innerHTML = `<span class="code-step-n">${this.step + 1}</span><div class="code-step-txt"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>
+    this.q('.code-step').innerHTML = `<span class="code-step-n">${this.step + 1}</span><div class="code-step-txt"><b>${esc(s.title)}</b><span class="lead-act">${esc(this.stepText())}</span>${this.pips()}</div>
       ${canSpeak() ? `<button class="btn btn-small" data-act="listen" aria-label="Ascolta">${icon('ph:speaker-high-fill', 18)}</button>` : ''}
       <button class="btn btn-small" data-act="step-open">${icon('ph:question-fill', 18)}<span class="hide-xs">Cosa devo fare?</span></button>`;
   }
@@ -1368,16 +1383,179 @@ export class Workspace {
     pop.innerHTML = `<div class="step-card" role="dialog" aria-label="Passo ${this.step + 1}">
       ${bravo ? `<div class="step-bravo">${img('party-popper.svg', 30)}Bravo! Ora il passo dopo:</div>` : ''}
       <div class="step-head">${img(MODE_IMG[st.mode], 54)}<div><span class="step-n">Passo ${this.step + 1} di ${this.level.steps.length} · ${MODE_LABEL[st.mode]}</span><h2>${esc(st.title)}</h2></div></div>
-      <p>${esc(st.text)}</p>
+      <p class="lead-act">${esc(this.stepText())}</p>${this.pips()}
       <div class="row">
         ${canSpeak() ? `<button class="btn btn-soft" data-act="listen">${icon('ph:speaker-high-fill', 22)}Ascolta</button>` : ''}
         <button class="btn btn-go" data-act="step-ok">Ok, ci provo!</button>
-      </div></div>`;
+      </div>
+      ${canSpeak() ? `<button class="link-btn autoread" data-act="autoread" aria-pressed="${getAutoRead()}">${icon(getAutoRead() ? 'ph:speaker-high-fill' : 'ph:speaker-slash-fill', 18)}Leggi da solo: ${getAutoRead() ? 'sì' : 'no'}</button>` : ''}
+      </div>`;
     pop.hidden = false;
+    if (!force) this.readStep(bravo);
     (pop.querySelector('[data-act=step-ok]') as HTMLElement).focus();
   }
 
-  closeStepPop() { this.q('.step-pop').hidden = true; }
+  closeStepPop() { this.q('.step-pop').hidden = true; this.idleAt = performance.now(); }
+
+  // ---------- l'elettricità che scorre ----------
+  /** In quali cavi passa la corrente adesso, e in che verso (1 = da `a` verso `b`). Solo quando il circuito funziona davvero. */
+  private flowKey = '';
+  private updateFlows() {
+    const a = this.analysis;
+    const flows = new Map<string, number>();
+    if (a) {
+      const mbOf = (ref: string) => this.parts.find(p => p.id === ref.split(':')[0])?.type === 'microbit';
+      const live = (id: string) => a.powered.has(id);
+      for (const w of this.wires) {
+        const ta = w.a.split(':')[1], tb = w.b.split(':')[1];
+        // la spina delle pile o del computer: l'energia va verso il micro:bit
+        if (ta === 'PLUG' || ta === 'USBPLUG' || tb === 'PLUG' || tb === 'USBPLUG') {
+          const mb = mbOf(w.a) ? w.a : w.b;
+          if (live(mb.split(':')[0])) flows.set(w.id, mb === w.b ? 1 : -1);
+          continue;
+        }
+        if (!this.running) continue;
+        for (const [self, other, term] of [[w.a, w.b, ta], [w.b, w.a, tb]] as const) {
+          const part = this.parts.find(p => p.id === self.split(':')[0]);
+          if (!part) continue;
+          const toPart = self === w.b ? 1 : -1;
+          if (part.type === 'servo') {
+            const sv = a.servos.find(x => x.id === part.id);
+            if (sv?.powered && sv.grounded && sv.sig) flows.set(w.id, term === 'GND' ? -toPart : toPart);
+          } else if (part.type === 'led' && (this.hw.ledLevel.get(part.id) ?? 0) > 0) {
+            flows.set(w.id, term === 'K' ? -toPart : toPart);
+          } else if (part.type === 'microbit' && PIN_PADS.includes(term as any) && this.padTouch.get(part.id + term) && !flows.has(w.id)) {
+            flows.set(w.id, -toPart); // un pin toccato: la corrente esce dal pin, passa dall'oggetto e torna al GND
+          } else if (part.type === 'microbit' && term === 'GND' && !flows.has(w.id) && PIN_PADS.some(pin => this.padTouch.get(part.id + pin)) && !this.parts.some(p => p.id === other.split(':')[0] && (p.type === 'servo' || p.type === 'led' || p.type === 'resistor'))) {
+            flows.set(w.id, toPart);
+          }
+        }
+      }
+    }
+    const key = [...flows].map(([k, v]) => k + v).join('|');
+    if (key === this.flowKey) return;
+    const first = !this.flowKey && key && this.running;
+    this.flowKey = key;
+    this.scene.setFlows(flows);
+    try {
+      if (first && [...flows.keys()].length > 1 && !sessionStorage.getItem('mcl-flow')) { sessionStorage.setItem('mcl-flow', '1'); toast(`${icon('ph:lightning-fill', 20)}Guarda i puntini gialli: è l'elettricità che corre nei cavi!`, { ms: 4200 }); }
+    } catch { /* */ }
+  }
+
+  // ---------- una cosa alla volta ----------
+  private actIdx = 0;
+  private acts() { const s = this.level.steps[this.step]; return s ? actsOf(s) : []; }
+  /** La prima azione del passo non ancora fatta. */
+  private actNow(c = this.ctx()) { const a = this.acts(); let i = 0; while (i < a.length - 1 && a[i].done(c)) i++; return i; }
+  private stepText() { const a = this.acts(); return a.length ? a[Math.min(this.actIdx, a.length - 1)].text : ''; }
+  private pips() {
+    const a = this.acts();
+    return a.length > 1 ? `<span class="pips" aria-label="Azione ${this.actIdx + 1} di ${a.length}">${a.map((_, i) => `<i class="${i < this.actIdx ? 'done' : i === this.actIdx ? 'now' : ''}"></i>`).join('')}</span>` : '';
+  }
+  /** Fatta un'azione, compare quella dopo (e, se "Leggi da solo" è acceso, viene letta). */
+  private refreshAct(c?: LevelCtx) {
+    if (!this.level.steps.length || this.finished || this.doneSteps.has(this.step)) return;
+    const i = this.actNow(c);
+    if (i === this.actIdx) return;
+    const forward = i > this.actIdx;
+    this.actIdx = i;
+    this.idleAt = performance.now();
+    this.renderGuide();
+    const pop = this.q('.step-pop');
+    if (!pop.hidden) { const p = pop.querySelector('.lead-act'); if (p) p.textContent = this.stepText(); }
+    for (const e of this.root.querySelectorAll<HTMLElement>('.lead-act')) { e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); }
+    if (forward) { tone(880, 70); if (getAutoRead()) speak(this.stepText()); }
+  }
+  private readStep(bravo = false) {
+    const s = this.level.steps[this.step];
+    if (s && getAutoRead() && canSpeak()) speak(`${bravo ? 'Bravo! ' : ''}${s.title}. ${this.stepText()}`);
+  }
+
+  // ---------- la manina che mostra il gesto ----------
+  private hand = new HandHint();
+  private idleAt = performance.now();
+  private tickTimer = 0;
+  private tick() {
+    if (!this.scene) return;
+    this.refreshAct();
+    this.updateFlows();
+    if (this.hand.active || performance.now() - this.idleAt < 10000) return;
+    if (!this.level.steps.length || this.finished || this.doneSteps.has(this.step) || !this.q('.step-pop').hidden) return;
+    if (document.querySelector('.modal-back, .buzz, .hunt') || document.hidden) return;
+    const h = this.hintPoints();
+    this.idleAt = performance.now() + 5000; // dopo averlo mostrato, aspetta un po' di più
+    if (h) void this.hand.show(h.pts, h.drag);
+  }
+  private center(sel: string) {
+    const e = this.root.querySelector<HTMLElement>(sel);
+    if (!e || e.hidden || (e as HTMLButtonElement).disabled) return null;
+    e.scrollIntoView({ block: 'nearest', inline: 'center' });
+    const r = e.getBoundingClientRect();
+    return r.width && r.height ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  }
+  /** Dove deve andare la manina per l'azione di adesso. `null` = non lo sappiamo mostrare (es. cambiare un numero nei blocchi). */
+  hintPoints(): { pts: { x: number; y: number }[]; drag?: boolean } | null {
+    const s = this.level.steps[this.step];
+    if (!s) return null;
+    const one = (sel: string) => { const p = this.center(sel); return p ? { pts: [p] } : null; };
+    const t = this.stepText();
+    // un pulsante da premere: lo dice il testo dell'azione
+    const press: [RegExp, () => string | null][] = [
+      [/^Premi Prova!/, () => this.running ? null : '[data-act=run]'],
+      [/^Premi Ferma/, () => this.running ? '[data-act=run]' : null],
+      [/^Premi Carica, poi A/, () => this.game.loaded ? '.hint [data-btn=A]' : '.mb-load'],
+      [/^Premi Carica/, () => '.mb-load'],
+      [/^Premi A\b/, () => '.hint [data-btn=A]'],
+      [/Biscotto/, () => '.mb-cover'],
+      [/[Pp]remi la luna/, () => '.hint [data-light="0"]'],
+      [/[Pp]remi la lampadina/, () => '.hint [data-light="1"]'],
+      [/3 elastici/, () => '.hint [data-bands="3"]'],
+      [/Fai un passo/, () => '.hint .mb-step'],
+      [/"Gioca"/, () => '.mb-buzz'],
+    ];
+    for (const [re, sel] of press) if (re.test(t)) { const q = sel(); return q ? one(q) : null; }
+    if (/^(Cambia|Nel blocco|Nel codice|In un blocco|Rendi|Fai scodinzolare)/.test(t)) return null;
+    const sh = s.show;
+    if (!sh || this.running) return null;
+    if (s.mode !== this.mode) return one(`.tab[data-mode=${s.mode}]`);
+    const inst = (type: string) => this.parts.filter(p => p.type === type);
+    if ('add' in sh) {
+      const miss = (Array.isArray(sh.add) ? sh.add : [sh.add]).find(ty => !inst(ty).length);
+      return miss ? one(`.part[data-type=${miss}]`) : null;
+    }
+    if ('drag' in sh) {
+      const pairs = (Array.isArray(sh.drag[0]) ? sh.drag : [sh.drag]) as [string, string][];
+      for (const [a, b] of pairs) {
+        const hostType = (p: PartInst) => this.parts.find(h => h.id === p.attachedTo)?.type;
+        if (inst(a).some(p => hostType(p) === (b === 'horn' ? 'servo' : b))) continue;
+        const pa = inst(a)[0];
+        if (!pa) return one(`.part[data-type=${a}]`);
+        let to: { x: number; y: number } | null = null;
+        if (b === 'horn') { const sv = inst('servo').find(x => x.attachedTo) ?? inst('servo')[0]; to = sv ? this.scene.hornTipClient(sv.id) : null; }
+        else { const pb = inst(b)[0]; if (!pb) return one(`.part[data-type=${b}]`); to = this.scene.objectClient(pb.id); }
+        const from = this.scene.objectClient(pa.id);
+        return from && to ? { pts: [from, to], drag: true } : null;
+      }
+      return null;
+    }
+    const a = this.analysis;
+    if (!a) return null;
+    for (const [ra, rb] of sh.wire) {
+      const [ta, na] = ra.split(':'), [tb, nbs] = rb.split(':');
+      const alts = nbs.split('|');
+      for (const pa of inst(ta)) {
+        const ref = `${pa.id}:${na}`;
+        const targets = inst(tb).flatMap(pb => alts.map(n => `${pb.id}:${n}`));
+        if (!targets.length || targets.some(r => a.nets.same(ref, r))) continue;
+        const used = (r: string) => this.wires.some(w => w.a === r || w.b === r);
+        const dest = targets.find(r => !used(r)) ?? targets[0];
+        const p1 = this.scene.terminalClient(ref), p2 = this.scene.terminalClient(dest);
+        if (!p1 || !p2) return null;
+        return this.pending === ref ? { pts: [p2] } : { pts: [p1, p2] };
+      }
+    }
+    return null;
+  }
 
   /** Cosa succede nel mondo vero quando un pezzo si attacca a un altro. */
   private attachMsg(p: PartInst): string {
@@ -1523,12 +1701,27 @@ export class Workspace {
     saveStars(this.level.id, 3);
     const total = Object.values(loadProgress().stars).reduce((a, b) => a + b, 0);
     this.q('.stars-n').textContent = String(total);
-    const R = this.level.real;
+    const R = this.level.real, W = this.level.word;
+    this.hand.hide();
     const m = modal(`<div class="finale">
       ${img('party-popper.svg', 72)}
       <h2>Ce l'hai fatta!</h2>
       <div class="finale-stars">${img('star.svg', 48)}${img('star.svg', 56)}${img('star.svg', 48)}</div>
-      <p class="lead">Hai finito <b>${esc(this.level.title)}</b>. Ora costruiscilo davvero!</p>
+      <p class="lead">Hai finito <b>${esc(this.level.title)}</b>.${W ? '' : ' Ora costruiscilo davvero!'}</p>
+      ${W ? `<div class="word-card">
+        <span class="word-k">${icon('ph:medal-fill', 20)}Parola nuova</span>
+        <h3>${esc(W.term)}</h3>
+        <p>${esc(W.means)}</p>
+        ${canSpeak() ? `<button class="btn btn-soft btn-small" data-x="say">${icon('ph:speaker-high-fill', 20)}Ascolta</button>` : ''}
+      </div>
+      <div class="quiz">
+        <p class="quiz-q">${esc(W.quiz.q)}</p>
+        <div class="quiz-opts">${W.quiz.options.map((o, i) => `<button class="btn quiz-opt" data-opt="${i}">${esc(o)}</button>`).join('')}</div>
+        <p class="quiz-msg" aria-live="polite"></p>
+        <button class="link-btn quiz-skip" data-x="skip">Salta la domanda</button>
+      </div>` : ''}
+      <div class="finale-more" ${W ? 'hidden' : ''}>
+      <p class="lead">Ora costruiscilo davvero!</p>
       <div class="finale-cols">
         <div><h3>${icon('ph:shopping-bag-fill', 22, 'color:#B8862A')}Ti serve</h3><ul>${R.materials.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
         <div><h3>${icon('ph:shield-check-fill', 22, 'color:#2E8B57')}Sicurezza</h3><ul class="safe">${R.safety.map(([s, t]) => `<li>${safetyTag(s as any)}<span>${esc(t)}</span></li>`).join('')}</ul></div>
@@ -1538,11 +1731,37 @@ export class Workspace {
         <button class="btn btn-go" data-x="dl">${icon('ph:usb-fill', 22)}Manda al micro:bit vero</button>
         <a class="btn" href="#/">${icon('ph:flag-fill', 20)}Torna al percorso</a>
         <button class="btn" data-x="stay">Resta qui e gioca</button>
-      </div></div>`, { wide: true });
+      </div></div></div>`, { wide: true, onClose: stopSpeaking });
     this.closeStepPop();
     m.root.querySelector('[data-x=stay]')!.addEventListener('click', m.close);
     m.root.querySelector('[data-x=dl]')!.addEventListener('click', () => { m.close(); this.setMode('code'); void this.download(); });
     m.root.querySelector('a[href="#/"]')!.addEventListener('click', m.close);
+    if (W) {
+      const say = () => speak(`Parola nuova: ${W.term}. ${W.means} ${W.quiz.q}`);
+      const more = m.root.querySelector<HTMLElement>('.finale-more')!, msg = m.root.querySelector<HTMLElement>('.quiz-msg')!;
+      const reveal = () => { more.hidden = false; m.root.querySelector<HTMLElement>('.quiz-skip')!.hidden = true; };
+      m.root.querySelector('[data-x=say]')?.addEventListener('click', say);
+      m.root.querySelector('[data-x=skip]')!.addEventListener('click', reveal);
+      for (const b of m.root.querySelectorAll<HTMLButtonElement>('.quiz-opt')) b.addEventListener('click', () => {
+        if (Number(b.dataset.opt) === W.quiz.answer) {
+          b.classList.add('right');
+          for (const o of m.root.querySelectorAll<HTMLButtonElement>('.quiz-opt')) o.disabled = true;
+          saveWord(this.level.id);
+          msg.innerHTML = `${icon('ph:medal-fill', 22)}Giusto! Hai vinto il distintivo <b>${esc(W.term)}</b>.`;
+          msg.className = 'quiz-msg ok';
+          cheer();
+          if (getAutoRead()) speak(`Giusto! Hai vinto il distintivo ${W.term}.`);
+          reveal();
+          more.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else {
+          b.classList.add('wrong'); b.disabled = true;
+          msg.textContent = 'Quasi! Rileggi la parola nuova e riprova.';
+          msg.className = 'quiz-msg';
+          tone(220, 160);
+        }
+      });
+      if (getAutoRead()) say();
+    }
   }
 
   // ---------- sincronizzazione ----------

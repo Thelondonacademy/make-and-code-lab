@@ -170,6 +170,7 @@ export class Scene3D {
       if (!o || k >= 1) { this.bumps.delete(id); if (o) o.built.group.position.y = o.inst.attachedTo ? o.built.group.position.y : (o.inst.y ?? 0); continue; }
       o.built.group.position.y = (o.inst.y ?? 0) + Math.sin(k * Math.PI) * 1.6;
     }
+    if (this.flows.size) this.stepFlows(performance.now());
     if (this.fly) {
       const f = this.fly, k = Math.min(1, (performance.now() - f.t0) / f.dur), e = k * k * (3 - 2 * k);
       this.controls.target.lerpVectors(f.t1, f.t2, e);
@@ -520,6 +521,35 @@ export class Scene3D {
     const pts = wirePath([a.x, a.y, a.z], [b.x, b.y, b.z], obs, seed).map(p => new THREE.Vector3(p[0], p[1], p[2]));
     return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   }
+  // ---------- l'elettricità che scorre: puntini gialli lungo i cavi ----------
+  private flows = new Map<string, number>();
+  private flowDots = new Map<string, THREE.Mesh[]>();
+  private flowMat = new THREE.MeshBasicMaterial({ color: 0xffe14d });
+  /** In quali cavi passa la corrente, e in che verso (1 = dal capo `a` al capo `b`, -1 = al contrario). */
+  setFlows(flows: Map<string, number>) {
+    this.flows = new Map(flows);
+    for (const [id, dots] of this.flowDots) if (!this.flows.has(id)) { dots.forEach(d => d.removeFromParent()); this.flowDots.delete(id); }
+  }
+  private stepFlows(now: number) {
+    for (const [id, dir] of this.flows) {
+      const g = this.wireMeshes.get(id);
+      const curve = g?.userData.curve as THREE.Curve<THREE.Vector3> | undefined;
+      let dots = this.flowDots.get(id);
+      if (!g || !curve) { dots?.forEach(d => (d.visible = false)); continue; }
+      if (!dots) {
+        dots = [0, 1, 2].map(() => { const d = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), this.flowMat); this.scene.add(d); return d; });
+        this.flowDots.set(id, dots);
+      }
+      const len = Math.max(4, curve.getLength()), speed = 9 / len; // sempre la stessa velocità, anche sui cavi lunghi
+      dots.forEach((d, i) => {
+        let t = ((now / 1000) * speed + i / dots!.length) % 1;
+        if (dir < 0) t = 1 - t;
+        d.visible = true;
+        d.position.copy(curve.getPointAt(t));
+      });
+    }
+  }
+
   private wireSeed(id: string) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 
   private rebuildWires() {
@@ -566,6 +596,7 @@ export class Scene3D {
         g.add(this.clip(a, hex, w.id, 'a'), this.clip(b, hex, w.id, 'b'));
       }
       this.wireGroup.add(g);
+      g.userData.curve = curve;
       this.wireMeshes.set(w.id, g);
     }
   }

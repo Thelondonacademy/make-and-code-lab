@@ -3,7 +3,7 @@ import type { PartInst, Wire } from './sim/circuit';
 import { LEVELS } from './data/levels';
 
 export interface SavedWork { parts: PartInst[]; wires: Wire[]; mk?: any; step?: number; rev?: number }
-export interface Progress { stars: Record<string, number> }
+export interface Progress { stars: Record<string, number>; words?: Record<string, boolean> }
 
 const K = 'mcl-v1-';
 function get<T>(k: string, d: T): T {
@@ -27,3 +27,9 @@ export const getName = () => get<string>('name', '');
 export const setName = (n: string) => set('name', n);
 export const getUnlockAll = () => get<boolean>('unlock-all', false);
 export const setUnlockAll = (v: boolean) => set('unlock-all', v);
+
+/** Le parole nuove imparate (una per progetto): si vincono rispondendo alla domanda finale. */
+export const saveWord = (level: string) => { const p = get<Progress>('progress', { stars: {} }); p.words = { ...(p.words || {}), [level]: true }; set('progress', p); };
+/** "Leggi da solo": ogni passo nuovo viene letto ad alta voce (si può spegnere, per esempio in classe). */
+export const getAutoRead = () => get<boolean>('autoread', true);
+export const setAutoRead = (v: boolean) => set('autoread', v);

@@ -1,7 +1,8 @@
 // Pagine: il percorso del corso, la sicurezza, i crediti.
 import { LESSONS, LEVELS, levelById } from '../data/levels';
 import { icon } from './icons';
-import { el, esc, header, img, safetyTag } from './common';
+import { el, esc, header, img, modal, safetyTag } from './common';
+import { speak, canSpeak, stopSpeaking } from '../speech';
 import { loadProgress, getName, setName, getUnlockAll, setUnlockAll } from '../store';
 
 const NAV = (page: string) => `<nav class="nav" aria-label="Sezioni">
@@ -48,6 +49,16 @@ export function homePage(): HTMLElement {
       <div class="tiles" style="grid-template-columns:repeat(${l.projects.length},minmax(0,1fr))">${tiles}</div></section>`;
   }).join('');
 
+  // le parole nuove: una per progetto, si vince rispondendo alla domanda finale
+  const withWord = LEVELS.filter(l => l.word);
+  const got = withWord.filter(l => prog.words?.[l.id]);
+  const words = `<section class="words" aria-label="Le mie parole">
+    <h2>${icon('ph:medal-fill', 22, 'color:#7B3F9E')}Le mie parole <small>${got.length} di ${withWord.length}</small></h2>
+    <div class="word-chips">${withWord.map(l => prog.words?.[l.id]
+      ? `<button class="word-chip" data-word="${l.id}">${icon('ph:medal-fill', 18)}${esc(l.word!.term)}</button>`
+      : `<span class="word-chip locked" title="Finisci ${esc(l.title)} per scoprirla">${icon('ph:lock-simple-fill', 16)}?</span>`).join('')}</div>
+  </section>`;
+
   const root = el(`<div class="page">
     ${header(NAV('home'))}
     <div class="wrap">
@@ -63,6 +74,7 @@ export function homePage(): HTMLElement {
           <button class="btn btn-small btn-unlock" data-unlock="${unlockAll ? '0' : '1'}">${icon(unlockAll ? 'ph:lock-simple-fill' : 'ph:check-bold', 16)}${unlockAll ? 'Blocca di nuovo i livelli' : 'Sblocca tutti i livelli'}</button>
         </div>
       </div>
+      ${words}
       <div class="lessons">${lessons}</div>
       <a class="free" href="#/libero">${img('toolbox.svg', 56)}<div><b>Laboratorio libero</b><span>Inventa il tuo robot con tutti i pezzi.</span></div><span class="btn">Inizia a inventare</span></a>
       <p class="foot">Make &amp; Code Lab è un progetto open source di The London Academy · <a href="https://github.com/Thelondonacademy/make-and-code-lab" target="_blank" rel="noopener">codice su GitHub</a></p>
@@ -70,6 +82,13 @@ export function homePage(): HTMLElement {
   root.querySelector('.btn-unlock')!.addEventListener('click', e => {
     setUnlockAll((e.currentTarget as HTMLElement).dataset.unlock === '1');
     window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
+  for (const b of root.querySelectorAll<HTMLElement>('[data-word]')) b.addEventListener('click', () => {
+    const l = LEVELS.find(x => x.id === b.dataset.word)!;
+    const m = modal(`<div class="finale"><div class="word-card"><span class="word-k">${icon('ph:medal-fill', 20)}Parola imparata</span><h3>${esc(l.word!.term)}</h3><p>${esc(l.word!.means)}</p>
+      ${canSpeak() ? `<button class="btn btn-soft btn-small" data-x="say">${icon('ph:speaker-high-fill', 20)}Ascolta</button>` : ''}</div>
+      <p class="lead">L'hai imparata con <b>${esc(l.title)}</b>.</p></div>`, { onClose: stopSpeaking });
+    m.root.querySelector('[data-x=say]')?.addEventListener('click', () => speak(`${l.word!.term}. ${l.word!.means}`));
   });
   root.querySelector('.name-form')?.addEventListener('submit', e => {
     e.preventDefault();

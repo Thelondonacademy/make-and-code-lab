@@ -18,7 +18,7 @@ export interface LevelCtx {
   runInStep: boolean;     // la prova in corso è partita durante questo passo, con il codice di adesso
   icon: string;           // il disegno che il micro:bit mostra adesso ('' = spento)
   tested: Record<string, boolean>; // oggetti provati sul piano di prova: conduce sì/no
-  game: { touches: number; finished: boolean; played: boolean; throws: number; hits: number }; // filo, tesoro, catapulta
+  game: { touches: number; finished: boolean; played: boolean; throws: number; hits: number; bands?: number; loaded?: boolean }; // filo, tesoro, catapulta
   friend: RunStats | null;  // il micro:bit dell'amico (radio)
   angles: Record<string, number>; // dove sono i bracci dei servo adesso
 }
@@ -35,7 +35,34 @@ export interface Step {
   goal: (c: LevelCtx) => boolean;
   checklist?: (c: LevelCtx) => { label: string; color?: string; done: boolean }[];
   why?: { q: string; a: string };
+  /** Una cosa alla volta: il passo diviso in azioni brevi. Si vede solo la prima non ancora fatta. */
+  acts?: Act[];
+  /** Il gesto da mostrare con la manina, se il bambino resta fermo. */
+  show?: Show;
 }
+export interface Act { text: string; done: (c: LevelCtx) => boolean }
+export type Show =
+  | { add: string | string[] }                     // tocca questo pezzo tra "I miei pezzi" (il primo che manca)
+  | { drag: [string, string] | [string, string][] } // trascina il primo pezzo sopra il secondo ('horn' = il braccio del servo)
+  | { wire: [string, string][] };                  // tocca un cerchietto, poi l'altro: 'servo:GND' → 'microbit:GND' ('testPad:A|B' = uno dei due)
+
+/** La parola nuova del progetto, con una domanda per vedere se è rimasta in testa. */
+export interface Word { term: string; means: string; quiz: { q: string; options: string[]; answer: number } }
+
+/** Le azioni di un passo. Se non sono scritte a mano, "Premi Prova! Poi..." e "Premi Ferma. Poi..." si dividono da soli. */
+export function actsOf(s: Step): Act[] {
+  if (s.acts) return s.acts;
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  let m = s.text.match(/^Premi Prova!\s+(?:Poi\s+)?(.+)$/);
+  if (m) return [{ text: 'Premi Prova!', done: c => c.running }, { text: cap(m[1]), done: s.goal }];
+  m = s.text.match(/^Premi Ferma\.\s+(?:Poi\s+)?(.+)$/);
+  if (m) return [{ text: 'Premi Ferma.', done: c => !c.running }, { text: cap(m[1]), done: s.goal }];
+  return [{ text: s.text, done: s.goal }];
+}
+const SERVO_WIRES: [string, string][] = [['servo:GND', 'microbit:GND'], ['servo:VCC', 'microbit:3V'], ['servo:SIG', 'microbit:P0']];
+const POWER_WIRES: [string, string][] = [['battery:PLUG', 'microbit:BAT']];
+/** Ha premuto Prova! in questo passo, con il codice di adesso. */
+const ran = (c: LevelCtx) => c.runInStep;
 
 export interface Level {
   id: string;
@@ -51,6 +78,7 @@ export interface Level {
   dependencies: Record<string, string>;
   steps: Step[];
   real: { materials: string[]; safety: [string, string][]; printable?: { label: string; file: string } };
+  word?: Word;
 }
 
 export interface LessonDef {
@@ -134,6 +162,7 @@ export const LEVELS: Level[] = [
       { title: 'Prendi le pile', mode: 'build', text: 'Ora trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
       {
         title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa in alto sul micro:bit.',
+        show: { wire: POWER_WIRES },
         goal: powered, why: { q: 'Perché servono le pile?', a: 'Le pile danno l\'energia. Senza energia il micro:bit dorme.' },
       },
       {
@@ -143,9 +172,11 @@ export const LEVELS: Level[] = [
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Nel codice scegli un altro disegno al posto del cuore. Poi premi Prova!',
+        acts: [{ text: 'Nel codice scegli un altro disegno al posto del cuore.', done: c => icons(c.code).some(n => n !== 'Heart' && n !== 'SmallHeart') || /showLeds|showString|showNumber|showArrow/.test(c.code) }, { text: 'Premi Prova!', done: c => c.runInStep && (icons(c.code).some(n => n !== 'Heart' && n !== 'SmallHeart') || /showLeds|showString|showNumber|showArrow/.test(c.code)) && !!c.stats && c.stats.iconsShown.size + c.stats.textsShown.length > 0 }],
         goal: c => c.runInStep && (icons(c.code).some(n => n !== 'Heart' && n !== 'SmallHeart') || /showLeds|showString|showNumber|showArrow/.test(c.code)) && !!c.stats && c.stats.iconsShown.size + c.stats.textsShown.length > 0,
       },
     ],
+    word: { term: 'Programma', means: 'Un programma è la lista delle cose che il micro:bit deve fare, una dopo l\'altra.', quiz: { q: 'Chi dice al micro:bit cosa fare?', options: ['Le pile', 'Il programma', 'Il cavo'], answer: 1 } },
     real: {
       materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Collega la spina al micro:bit.']],
@@ -179,6 +210,7 @@ basic.forever(function () {
       { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Il contapassi gira libero: niente cavo USB.', goal: c => has(c, 'battery') },
       {
         title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.',
+        show: { wire: POWER_WIRES },
         goal: powered,
       },
       {
@@ -188,6 +220,7 @@ basic.forever(function () {
       },
       {
         title: 'Allaccialo alla caviglia', mode: 'build', text: 'Trascina la fascia sul banco. Poi trascina sopra la fascia il micro:bit e le pile.',
+        show: { drag: [['microbit', 'strap'], ['battery', 'strap']] },
         goal: c => onStrap(c, 'microbit') && onStrap(c, 'battery'),
         checklist: c => [
           { label: 'Fascia sul banco', done: has(c, 'strap') },
@@ -203,10 +236,12 @@ basic.forever(function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Quanti passi vuoi fare? Nel blocco "se passi < 10" cambia il 10 con un altro numero. Poi premi Prova! e cammina.',
+        acts: [{ text: 'Nel blocco "se passi < 10" cambia il 10 con un altro numero.', done: c => stepGoal(c.code) !== null && stepGoal(c.code) !== 10 }, { text: 'Premi Prova!', done: ran }, { text: 'Cammina: premi tante volte "Fai un passo".', done: c => c.runInStep && stepGoal(c.code) !== null && stepGoal(c.code) !== 10 && !!c.stats && c.stats.iconsShown.has('Happy') }],
         goal: c => c.runInStep && stepGoal(c.code) !== null && stepGoal(c.code) !== 10 && !!c.stats && c.stats.iconsShown.has('Happy'),
         why: { q: 'Nel mondo vero conta giusto?', a: 'Quasi! Se cammini piano a volte non sente il passo. Se salti, a volte ne conta due. È un esperimento: prova e conta anche tu.' },
       },
     ],
+    word: { term: 'Variabile', means: 'Una variabile è una scatola con un nome e un numero dentro. Qui si chiama "passi".', quiz: { q: 'Dove tiene il conto dei passi il micro:bit?', options: ['In una variabile', 'Nelle pile', 'Nella fascia'], answer: 0 } },
     real: {
       materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice', 'un elastico largo, una fascia con il velcro o un calzino lungo', 'un po\' di nastro adesivo'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Allaccia la fascia: comoda, non troppo stretta.'], ['solo', 'Cammina piano e guarda dove vai.']],
@@ -252,6 +287,7 @@ basic.forever(function () {
       },
       {
         title: 'Il leggio di cartone', mode: 'build', text: 'Trascina il leggio sul banco. Poi trascina sopra il micro:bit e le pile.',
+        show: { drag: [['microbit', 'cardStand'], ['battery', 'cardStand']] },
         goal: c => onHost(c, 'microbit', 'cardStand') && onHost(c, 'battery', 'cardStand'),
         checklist: c => [
           { label: 'Leggio sul banco', done: has(c, 'cardStand') },
@@ -262,10 +298,12 @@ basic.forever(function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Cambia il 100 con un altro numero, per esempio 50. Poi premi Prova!, spegni la luce oppure copri il micro:bit con la mano.',
+        acts: [{ text: 'Cambia il 100 con un altro numero, per esempio 50.', done: c => lightGoal(c.code) !== null && lightGoal(c.code) !== 100 }, { text: 'Premi Prova!', done: ran }, { text: 'Premi la luna, oppure copri il micro:bit con la mano.', done: c => c.runInStep && lightGoal(c.code) !== null && lightGoal(c.code) !== 100 && !!c.stats && c.stats.iconsShown.has('leds') }],
         goal: c => c.runInStep && lightGoal(c.code) !== null && lightGoal(c.code) !== 100 && !!c.stats && c.stats.iconsShown.has('leds'),
         why: { q: 'Quale numero è giusto?', a: 'Dipende dalla tua stanza! La luna vale 10, la lampadina 120, il sole 250. Con 150 si accende anche con la lampadina. Con 5 non si accende mai. Prova!' },
       },
     ],
+    word: { term: 'Sensore', means: 'Un sensore sente il mondo. Il micro:bit sente la luce, il movimento e i suoni.', quiz: { q: 'Cosa fa un sensore?', options: ['Dà l\'energia', 'Fa girare un braccio', 'Sente il mondo: luce, movimento, suoni'], answer: 2 } },
     real: {
       materials: ['un micro:bit V2', 'un portapile con 2 pile AAA', 'il cavo USB per caricare il codice', 'un cartoncino (va bene una scatola di cereali)', 'nastro adesivo', 'una torcia, oppure la tua mano per fare buio'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['adulto', 'Il cartoncino si taglia con un adulto.'], ['solo', 'Piega il leggio e attacca il micro:bit con il nastro.']],
@@ -309,10 +347,12 @@ input.onGesture(Gesture.Shake, function () {
       },
       {
         title: 'Disegna il tuo sasso', mode: 'code', text: 'Nel blocco del sasso (il quadratino piccolo) scegli un altro disegno, o disegnalo tu con "mostra LED". Poi premi Prova! e scuoti.',
+        acts: [{ text: 'Nel blocco del sasso (il quadratino piccolo) scegli un altro disegno.', done: c => !c.code.includes('IconNames.SmallSquare') }, { text: 'Premi Prova!', done: ran }, { text: 'Scuoti!', done: c => c.runInStep && !c.code.includes('IconNames.SmallSquare') && !!c.stats && c.stats.shakes > 0 && (c.stats.iconsShown.size > 0) }],
         goal: c => c.runInStep && !c.code.includes('IconNames.SmallSquare') && !!c.stats && c.stats.shakes > 0 && (c.stats.iconsShown.size > 0),
         why: { q: 'Posso inventare altre mani?', a: 'Sì! Puoi cambiare tutti i disegni, o inventare un gioco nuovo con regole tue.' },
       },
     ],
+    word: { term: 'A caso', means: 'A caso vuol dire che non sai cosa uscirà, come quando tiri un dado.', quiz: { q: 'Cosa vuol dire "a caso"?', options: ['Esce sempre il sasso', 'Non sai cosa uscirà, come con un dado', 'Vince sempre il micro:bit'], answer: 1 } },
     real: {
       materials: ['due micro:bit V2, uno a testa (oppure uno solo contro la mano di un amico)', 'un portapile con 2 pile AAA per ogni micro:bit', 'il cavo USB per caricare il codice', 'un amico con cui giocare'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Scuoti piano e tieni forte micro:bit e pile.'], ['solo', 'Non lanciarlo: si rompe!']],
@@ -342,10 +382,12 @@ input.onGesture(Gesture.Shake, function () {
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'Il piano di prova', mode: 'build', text: 'Trascina il piano di prova sul banco: un cartoncino con due graffette.',
+        show: { add: 'testPad' },
         goal: c => has(c, 'testPad'),
       },
       {
         title: 'Due cavi', mode: 'wire', text: 'Un cavo dal pin 1 a una graffetta. Un altro cavo dal GND all\'altra graffetta.',
+        show: { wire: [['microbit:P1', 'testPad:A|B'], ['microbit:GND', 'testPad:A|B']] },
         goal: c => padWired(c),
         checklist: c => {
           const pad = c.parts.find(p => p.type === 'testPad');
@@ -357,6 +399,7 @@ input.onGesture(Gesture.Shake, function () {
       },
       {
         title: 'La moneta', mode: 'build', text: 'Trascina la moneta sul piano di prova, sopra le due graffette.',
+        show: { drag: ['coin', 'testPad'] },
         goal: c => onHost(c, 'coin', 'testPad'),
       },
       {
@@ -366,6 +409,10 @@ input.onGesture(Gesture.Shake, function () {
       },
       {
         title: 'Lo scienziato', mode: 'build', text: 'Lascia acceso. Togli la moneta e prova la gomma, il tappo e la banana. Prima indovina: si accenderà?',
+        acts: [
+          { text: 'Lascia acceso. Togli la moneta dal piano.', done: c => !c.parts.some(p => p.type === 'coin' && !!p.attachedTo) || ['eraser', 'plasticCap', 'banana'].some(t => t in c.tested) },
+          { text: 'Prova la gomma, il tappo e la banana. Prima indovina: si accenderà?', done: c => ['eraser', 'plasticCap', 'banana'].every(t => t in c.tested) },
+        ],
         goal: c => ['eraser', 'plasticCap', 'banana'].every(t => t in c.tested),
         checklist: c => [['eraser', 'Gomma'], ['plasticCap', 'Tappo di plastica'], ['banana', 'Banana']].map(([t, n]) => ({
           label: t in c.tested ? `${n}: ${c.tested[t] ? 'conduce' : 'non conduce'}` : `${n}: ?`, done: t in c.tested,
@@ -374,9 +421,11 @@ input.onGesture(Gesture.Shake, function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Lascia sul piano un oggetto che conduce, come la moneta o la banana. Poi nel codice cambia il cuore con un altro disegno e premi Prova!',
+        acts: [{ text: 'Lascia sul piano un oggetto che conduce: la moneta o la banana.', done: c => padConducts(c) }, { text: 'Nel codice cambia il cuore con un altro disegno.', done: c => !c.code.includes('IconNames.Heart') }, { text: 'Premi Prova!', done: c => c.runInStep && !c.code.includes('IconNames.Heart') && c.icon !== '' && c.tested.coin !== undefined && padConducts(c) }],
         goal: c => c.runInStep && !c.code.includes('IconNames.Heart') && c.icon !== '' && c.tested.coin !== undefined && padConducts(c),
       },
     ],
+    word: { term: 'Conduttore', means: 'Un conduttore lascia passare l\'elettricità. I metalli sono conduttori.', quiz: { q: 'Quale di questi è un conduttore?', options: ['La gomma', 'Il tappo di plastica', 'La moneta'], answer: 2 } },
     real: {
       materials: ['un micro:bit V2 e un portapile con 2 pile AAA', '2 cavi a coccodrillo', 'un cartoncino e 2 graffette', 'oggetti da provare: una moneta, una banana, una gomma, un tappo di plastica, carta stagnola', 'il foglio dove scrivere: conduce o non conduce?'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli alle graffette.'], ['solo', 'Non collegare mai il 3V con il GND: il micro:bit si può rompere.']],
@@ -406,12 +455,14 @@ input.onGesture(Gesture.Shake, function () {
       { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
-        title: 'Il filo e l\'anello', mode: 'build', text: 'Trascina il gioco del filo sul banco: un filo a onde nella plastilina e un anello con il manico.',
+        title: 'Il filo e l\'anello', mode: 'build', text: 'Trascina sul banco il gioco del filo: un filo a onde e un anello.',
+        show: { add: 'buzzWire' },
         goal: c => has(c, 'buzzWire'),
         why: { q: 'Come si fa quello vero?', a: 'Un adulto piega un filo di metallo a onde e lo ferma in due palline di plastilina. Con un pezzo corto fa un anello e lo infila sul filo prima di chiudere.' },
       },
       {
         title: 'Due cavi', mode: 'wire', text: 'Un cavo dal GND al filo. Un altro cavo dal pin 0 all\'anello.',
+        show: { wire: [['microbit:GND', 'buzzWire:W'], ['microbit:P0', 'buzzWire:L']] },
         goal: c => buzzWired(c),
         checklist: c => {
           const bw = c.parts.find(p => p.type === 'buzzWire');
@@ -432,9 +483,11 @@ input.onGesture(Gesture.Shake, function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Cambia la X con un altro disegno, per esempio una faccina triste. Poi premi Prova!, gioca e tocca il filo.',
+        acts: [{ text: 'Cambia la X con un altro disegno, per esempio una faccina triste.', done: c => !c.code.includes('IconNames.No') }, { text: 'Premi Prova!', done: ran }, { text: 'Premi "Gioca" e tocca il filo.', done: c => c.runInStep && !c.code.includes('IconNames.No') && !!c.stats && c.stats.pins.has('P0') && c.stats.iconsShown.size >= 2 }],
         goal: c => c.runInStep && !c.code.includes('IconNames.No') && !!c.stats && c.stats.pins.has('P0') && c.stats.iconsShown.size >= 2,
       },
     ],
+    word: { term: 'Circuito', means: 'Un circuito è una strada chiusa per l\'elettricità. Quando la strada si chiude, l\'elettricità passa.', quiz: { q: 'L\'anello tocca il filo. Cosa succede?', options: ['Il circuito si chiude e l\'elettricità passa', 'Le pile si scaricano', 'Il micro:bit si spegne'], answer: 0 } },
     real: {
       materials: ['un micro:bit V2 e un portapile con 2 pile AAA', '2 cavi a coccodrillo', 'un filo di metallo spesso (gruccia o filo da giardino), circa 50 cm', 'plastilina e una base di cartone', 'nastro adesivo per coprire le punte'],
       safety: [['adulto', 'Piegare e tagliare il filo: lo fa un adulto, le punte pungono.'], ['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli: GND al filo, pin 0 all\'anello.']],
@@ -469,16 +522,19 @@ input.onPinPressed(TouchPin.P2, function () {
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'La frutta', mode: 'build', text: 'Metti sul banco la banana, la mela, il limone e l\'arancia.',
+        show: { add: ['banana', 'apple', 'lemon', 'orange'] },
         goal: c => ['banana', 'apple', 'lemon', 'orange'].every(t => has(c, t)),
         checklist: c => [['banana', 'Banana'], ['apple', 'Mela'], ['lemon', 'Limone'], ['orange', 'Arancia']].map(([t, n]) => ({ label: n, done: has(c, t) })),
       },
       {
         title: 'L\'arancia in mano', mode: 'wire', text: 'Un cavo dal GND all\'arancia. Mentre suoni, l\'arancia la tieni in mano.',
+        show: { wire: [['microbit:GND', 'orange:F']] },
         goal: c => fruitOn(c, 'orange', 'GND'),
         why: { q: 'Perché tenere l\'arancia?', a: 'Con una mano tieni l\'arancia, con l\'altra tocchi un frutto. L\'elettricità passa dal frutto, nel tuo corpo, fino all\'arancia e al GND: il circuito si chiude!' },
       },
       {
         title: 'I tasti del piano', mode: 'wire', text: 'Pin 0 alla banana, pin 1 alla mela, pin 2 al limone.',
+        show: { wire: [['microbit:P0', 'banana:F'], ['microbit:P1', 'apple:F'], ['microbit:P2', 'lemon:F']] },
         goal: c => fruitOn(c, 'banana', 'P0') && fruitOn(c, 'apple', 'P1') && fruitOn(c, 'lemon', 'P2'),
         checklist: c => [
           { label: 'Pin 0 → banana', color: '#F5C400', done: fruitOn(c, 'banana', 'P0') },
@@ -487,15 +543,17 @@ input.onPinPressed(TouchPin.P2, function () {
         ],
       },
       {
-        title: 'Suona!', mode: 'code', text: 'Premi Prova! Tieni l\'arancia e tocca la banana, la mela e il limone (o i loro pulsanti in alto).',
+        title: 'Suona!', mode: 'code', text: 'Premi Prova! Tieni l\'arancia e tocca banana, mela e limone, o i loro pulsanti in alto.',
         goal: c => c.running && !!c.stats && ['P0', 'P1', 'P2'].every(p => c.stats!.pins.has(p)) && c.stats.tones >= 3,
         why: { q: 'Perché i suoni sono diversi?', a: 'Ogni frutto suona una nota diversa: Do, Mi, Sol. Il numero dice quanto vibra il suono: più è grande, più la nota è alta.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Cambia una nota: in un blocco "suona tono" scegli un\'altra nota, per esempio DO Alto. Poi premi Prova! e suona.',
+        acts: [{ text: 'In un blocco "suona tono" scegli un\'altra nota, per esempio DO Alto.', done: c => !['262', '330', '392'].every(n => c.code.includes(`playTone(${n}`)) }, { text: 'Premi Prova!', done: ran }, { text: 'Suona!', done: c => c.runInStep && !['262', '330', '392'].every(n => c.code.includes(`playTone(${n}`)) && !!c.stats && c.stats.tones > 0 }],
         goal: c => c.runInStep && !['262', '330', '392'].every(n => c.code.includes(`playTone(${n}`)) && !!c.stats && c.stats.tones > 0,
       },
     ],
+    word: { term: 'Nota', means: 'Una nota è un suono con un nome: DO, MI, SOL... Qui ogni frutto suona la sua.', quiz: { q: 'Che cos\'è una nota?', options: ['Un tipo di frutto', 'Un suono con un nome, come DO o MI', 'Un cavo colorato'], answer: 1 } },
     real: {
       materials: ['un micro:bit V2 (ha l\'altoparlante) e un portapile con 2 pile AAA', '4 cavi a coccodrillo', 'frutta: una banana, una mela, un limone e un\'arancia', 'il cavo USB per caricare il codice'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Attacca i coccodrilli alla frutta. La corrente è piccolissima: non si sente.'], ['solo', 'Dopo, lava la frutta prima di mangiarla.']],
@@ -532,6 +590,7 @@ radio.onReceivedNumber(function (receivedNumber) {
       { title: 'Le pile', mode: 'build', text: 'Ogni micro:bit ha le sue pile: trascinane due.', goal: c => count(c, 'battery') >= 2 },
       {
         title: 'Accendili tutti e due', mode: 'wire', text: 'Collega le pile a ogni micro:bit: spina bianca nella presa delle pile.',
+        show: { wire: POWER_WIRES },
         goal: c => c.analysis.powered.size >= 2,
         why: { q: 'Perché niente cavi tra i micro:bit?', a: 'Si parlano con la radio, come i walkie-talkie. Il messaggio vola nell\'aria!' },
       },
@@ -546,10 +605,12 @@ radio.onReceivedNumber(function (receivedNumber) {
       },
       {
         title: 'Il canale segreto', mode: 'code', text: 'Nel blocco "radio imposta gruppo" metti il vostro numero segreto, per esempio 7. Poi premi Prova! e manda un messaggio.',
+        acts: [{ text: 'Nel blocco "radio imposta gruppo" metti il vostro numero segreto, per esempio 7.', done: c => radioGroup(c.code) !== null && radioGroup(c.code) !== 1 }, { text: 'Premi Prova!', done: ran }, { text: 'Manda un messaggio: premi A.', done: c => c.runInStep && radioGroup(c.code) !== null && radioGroup(c.code) !== 1 && !!c.friend && (c.friend.radioReceived > 0 || (!!c.stats && c.stats.radioReceived > 0)) }],
         goal: c => c.runInStep && radioGroup(c.code) !== null && radioGroup(c.code) !== 1 && !!c.friend && (c.friend.radioReceived > 0 || (!!c.stats && c.stats.radioReceived > 0)),
         why: { q: 'Perché è segreto?', a: 'Il gruppo è come un canale. Solo i micro:bit con lo stesso numero si sentono. Chi ha un altro numero non riceve niente!' },
       },
     ],
+    word: { term: 'Radio', means: 'La radio manda messaggi nell\'aria, senza fili. Due micro:bit si parlano se hanno lo stesso gruppo.', quiz: { q: 'Quando due micro:bit si parlano con la radio?', options: ['Quando hanno lo stesso gruppo', 'Quando sono collegati con un cavo', 'Quando sono dello stesso colore'], answer: 0 } },
     real: {
       materials: ['due micro:bit V2, uno a testa', 'due portapile con 2 pile AAA', 'il cavo USB per caricare lo stesso codice su tutti e due', 'un amico!'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['solo', 'Carica lo stesso codice su tutti e due i micro:bit.'], ['solo', 'Scegliete un numero segreto diverso da quello degli altri gruppi.']],
@@ -596,15 +657,17 @@ basic.forever(function () {
         why: { q: 'Cosa fa il tesoro?', a: 'Per sempre, 5 volte al secondo, manda un segnale con la radio. Come un faro che fa "sono qui, sono qui!"' },
       },
       {
-        title: 'Cerca il tesoro', mode: 'code', text: 'Premi "Cerca il tesoro". Trascina il tuo micro:bit in giardino: cuore piccolo = lontano, cuore grande = vicino!',
+        title: 'Cerca il tesoro', mode: 'code', text: 'Premi "Cerca il tesoro" e trascina il micro:bit in giardino. Cuore grande = vicino!',
         goal: c => c.running && c.game.finished,
         why: { q: 'Come fa a sapere quanto è lontano?', a: 'Più sei vicino al tesoro, più il segnale arriva forte. Il micro:bit misura la forza: se è più di -60, sei vicino e mostra il cuore grande.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Rendi la caccia più difficile: cambia -60 con -50. Così il cuore grande arriva solo quando sei vicinissimo. Poi premi Prova! e cerca ancora.',
+        acts: [{ text: 'Rendi la caccia più difficile: cambia -60 con -50.', done: c => huntLimit(c.code) !== null && huntLimit(c.code) !== -60 }, { text: 'Premi Prova!', done: ran }, { text: 'Accendi il tesoro e cercalo ancora.', done: c => c.runInStep && huntLimit(c.code) !== null && huntLimit(c.code) !== -60 && c.game.finished }],
         goal: c => c.runInStep && huntLimit(c.code) !== null && huntLimit(c.code) !== -60 && c.game.finished,
       },
     ],
+    word: { term: 'Segnale', means: 'Il segnale della radio è forte da vicino e debole da lontano.', quiz: { q: 'Il cuore è grande. Il tesoro è...', options: ['Lontano', 'Spento', 'Vicino'], answer: 2 } },
     real: {
       materials: ['due micro:bit V2', 'due portapile con 2 pile AAA', 'il cavo USB per caricare lo stesso codice su tutti e due', 'un posto grande per nascondere il tesoro (aula, corridoio, giardino)'],
       safety: [['adulto', 'Metti le pile per il verso giusto.'], ['adulto', 'L\'adulto sceglie dove nascondere il tesoro: niente posti alti o pericolosi.'], ['solo', 'Cammina mentre cerchi, non correre.']],
@@ -643,16 +706,19 @@ basic.forever(function () {
     steps: [
       {
         title: 'Il corpo di Luna', mode: 'build', text: 'Trascina il corpo di carta sul banco. Nel mondo vero lo ritagli e lo pieghi.',
+        show: { add: 'petBody' },
         goal: c => has(c, 'petBody'),
         why: { q: 'Come si fa il corpo vero?', a: 'Stampi la sagoma. Tagli sulle righe piene. Pieghi sulle righe a puntini. Poi incolli le linguette.' },
       },
       {
         title: 'Il motore nella pancia', mode: 'build', text: 'Trascina il servo sopra il corpo di Luna. Entra da solo nella finestrella.',
+        show: { drag: ['servo', 'petBody'] },
         goal: c => c.parts.some(p => p.type === 'servo' && !!p.attachedTo && c.parts.find(b => b.id === p.attachedTo)?.type === 'petBody'),
         why: { q: 'Perché il servo sta dentro?', a: 'Così il braccio bianco esce dalla schiena. Lì metteremo la coda.' },
       },
       {
-        title: 'Collega il servo', mode: 'wire', text: 'I 3 fili escono dal buco dietro. Tocca la fine di un filo, poi il suo posto sul micro:bit.',
+        title: 'Collega il servo', mode: 'wire', text: 'Tocca la fine di un filo, poi il suo posto sul micro:bit.',
+        show: { wire: SERVO_WIRES },
         goal: c => {
           const s = c.parts.find(p => p.type === 'servo');
           return !!s && c.parts.some(mb => mb.type === 'microbit' && [['GND', 'GND'], ['VCC', '3V'], ['SIG', 'P0']].every(([t, d]) => c.analysis.nets.same(`${s.id}:${t}`, `${mb.id}:${d}`)));
@@ -670,7 +736,8 @@ basic.forever(function () {
         why: { q: 'Perché 3 fili?', a: 'Rosso e marrone portano l\'energia. L\'arancione porta il messaggio: "gira!"' },
       },
       {
-        title: 'Dai energia', mode: 'wire', text: 'Collega il computer con il cavo USB. Oppure usa le pile. Tocca la spina, poi la sua presa sul micro:bit.',
+        title: 'Dai energia', mode: 'wire', text: 'Tocca la spina del cavo USB, poi la sua presa sul micro:bit.',
+        show: { wire: [['usb:USBPLUG', 'microbit:USB']] },
         goal: c => servoOk(c),
         why: { q: 'USB o pile?', a: 'Tutte e due vanno bene. Il cavo USB dà energia e porta il codice. Le pile servono quando Luna gira libera.' },
       },
@@ -681,6 +748,11 @@ basic.forever(function () {
       },
       {
         title: 'Zampe, faccia e coda', mode: 'build', text: 'Trascina le zampe e la faccia sul corpo. Poi la coda sopra il braccio bianco del servo.',
+        acts: [
+          { text: 'Trascina le zampe e la faccia sul corpo di Luna.', done: c => ['petLegs', 'petFace'].every(t => c.parts.some(p => p.type === t && c.parts.find(b => b.id === p.attachedTo)?.type === 'petBody')) },
+          { text: 'Trascina la coda sopra il braccio bianco del servo.', done: c => c.parts.some(p => p.type === 'petTail' && c.parts.find(s => s.id === p.attachedTo)?.type === 'servo') },
+        ],
+        show: { drag: [['petLegs', 'petBody'], ['petFace', 'petBody'], ['petTail', 'horn']] },
         goal: c => {
           const body = c.parts.find(p => p.type === 'petBody');
           const on = (t: string) => !!body && c.parts.some(p => p.type === t && p.attachedTo === body.id);
@@ -699,11 +771,13 @@ basic.forever(function () {
       },
       {
         title: 'La stagnola sulla schiena', mode: 'build', text: 'Trascina la stagnola sulla schiena di Luna. Lì la accarezzerai.',
+        show: { drag: ['foilPatch', 'petBody'] },
         goal: c => c.parts.some(p => p.type === 'foilPatch' && c.parts.find(b => b.id === p.attachedTo)?.type === 'petBody'),
         why: { q: 'Perché la stagnola?', a: 'La stagnola è metallo: fa passare l\'elettricità. Il micro:bit sente quando la tocchi.' },
       },
       {
         title: 'Collega la stagnola', mode: 'wire', text: 'Tocca il cerchietto sulla stagnola. Poi tocca il pin 1 del micro:bit.',
+        show: { wire: [['foilPatch:F', 'microbit:P1']] },
         goal: c => foilOn(c, 'P1'),
         checklist: c => [{ label: 'Stagnola → pin 1', color: '#F5C400', done: foilOn(c, 'P1') }],
       },
@@ -714,9 +788,11 @@ basic.forever(function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Luna è contenta: falla scodinzolare più veloce. Metti un numero più piccolo nelle pause. Poi premi Prova! e accarezzala.',
+        acts: [{ text: 'Fai scodinzolare Luna più veloce: metti un numero più piccolo nelle pause.', done: c => pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 }, { text: 'Premi Prova!', done: ran }, { text: 'Accarezza Luna.', done: c => c.runInStep && pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 && !!c.stats && c.stats.pins.has('P1') && c.servoMoves >= 2 }],
         goal: c => c.runInStep && pauses(c.code).length > 0 && Math.min(...pauses(c.code)) < 300 && !!c.stats && c.stats.pins.has('P1') && c.servoMoves >= 2,
       },
     ],
+    word: { term: 'Servo', means: 'Il servo è un motore che va all\'angolo che gli dici, e poi resta lì.', quiz: { q: 'Cosa fa muovere la coda di Luna?', options: ['La stagnola', 'Il servo', 'La colla'], answer: 1 } },
     real: {
       materials: ['un micro:bit V2', 'il cavo USB, oppure 2 pile AAA con il portapile', 'un servo SG90 con il braccio lungo', '4 cavi a coccodrillo', 'la sagoma di Luna stampata su cartoncino', 'stagnola, circa 3,5 x 2 cm', 'colla stick o nastro adesivo', 'forbici'],
       printable: { label: 'Scarica le sagome di Luna (PDF)', file: 'paper-pet/luna-sagome.pdf' },
@@ -752,20 +828,24 @@ basic.forever(function () {
     steps: [
       {
         title: 'La testa del mostro', mode: 'build', text: 'Trascina il cartone del latte sul banco: è la testa del mostro.',
+        show: { add: 'milkCarton' },
         goal: c => has(c, 'milkCarton'),
         why: { q: 'Come si fa quello vero?', a: 'L\'adulto ritaglia la bocca prima della lezione. Tu incolli il modello sul cartone e disegni occhi e denti.' },
       },
       {
         title: 'L\'occhio del mostro', mode: 'build', text: 'Trascina il micro:bit sul cartone: va sotto la bocca, con le lucine verso di te.',
+        show: { drag: ['microbit', 'milkCarton'] },
         goal: c => onHost(c, 'microbit', 'milkCarton'),
         why: { q: 'Perché il micro:bit è l\'occhio?', a: 'Ti ricordi il sensore di luce della prima lezione? Le lucine del micro:bit sentono anche la luce. Qui fanno da occhio al mostro.' },
       },
       {
         title: 'Il servo sul tappo', mode: 'build', text: 'Trascina il servo sopra il cartone: si mette in cima, vicino al tappo.',
+        show: { drag: ['servo', 'milkCarton'] },
         goal: c => onHost(c, 'servo', 'milkCarton'),
       },
       {
         title: 'Collega il servo', mode: 'wire', text: 'Tocca la fine di un filo del servo, poi il suo posto sul micro:bit.',
+        show: { wire: SERVO_WIRES },
         goal: servoOk,
         checklist: servoChecklist,
         why: { q: 'E nel mondo vero?', a: 'I collegamenti li fa l\'adulto prima della lezione. Ferma ogni coccodrillo con un giro di nastro isolante, così non si stacca.' },
@@ -777,6 +857,7 @@ basic.forever(function () {
       },
       {
         title: 'Lo spago', mode: 'build', text: 'Premi Ferma. Poi trascina lo spago sopra il braccio bianco del servo: ora il servo è legato alla bocca.',
+        show: { drag: ['milkString', 'horn'] },
         goal: c => (onServoOf(c, 'milkString', 'milkCarton')?.rest ?? 0) >= 170,
         checklist: c => {
           const st = onServoOf(c, 'milkString', 'milkCarton');
@@ -794,10 +875,12 @@ basic.forever(function () {
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Fai aprire la bocca solo un pochino: cambia 100 con 140. Poi premi Prova! e avvicina il biscotto.',
+        acts: [{ text: 'Cambia 100 con 140: la bocca si aprirà solo un pochino.', done: c => !/AnalogPin\.P0,\s*100\)/.test(c.code) }, { text: 'Premi Prova!', done: ran }, { text: 'Tieni premuto Biscotto.', done: c => c.runInStep && !/AnalogPin\.P0,\s*100\)/.test(c.code) && /lightLevel/.test(c.code) && c.servoMoves >= 1 }],
         goal: c => c.runInStep && !/AnalogPin\.P0,\s*100\)/.test(c.code) && /lightLevel/.test(c.code) && c.servoMoves >= 1,
         why: { q: 'Perché si apre di meno?', a: 'Da 180 a 140 il braccio gira poco e tira poco lo spago. Da 180 a 100 gira di più. Se premi la luna la bocca resta sempre aperta: la stanza è buia. Metti 5 al posto di 20.' },
       },
     ],
+    word: { term: 'Calibrare', means: 'Calibrare vuol dire mettere il servo nella posizione di partenza prima di montare i pezzi.', quiz: { q: 'Quando si calibra il servo?', options: ['Prima di legare lo spago', 'Dopo aver montato tutto', 'Mai'], answer: 0 } },
     real: {
       materials: ['un micro:bit V2 con il portapile da 2 pile AAA (con l\'interruttore)', 'un micro servo SG90 con le crocette', '3 cavi a coccodrillo e il nastro isolante', 'un cartone del latte con il tappo a vite, con la bocca già tagliata', 'uno spago (va bene quello di una bustina di tè) e una graffetta', 'il modello stampato, biadesivo spesso e nastro di carta', 'un biscotto'],
       safety: [['adulto', 'I coccodrilli li attacca l\'adulto prima, con un giro di nastro isolante.'], ['adulto', 'La bocca del cartone la ritaglia l\'adulto prima.'], ['solo', 'Interruttore delle pile spento mentre monti e smonti.'], ['solo', 'Incolla il modello, lega lo spago, avvicina il biscotto.']],
@@ -831,12 +914,14 @@ input.onButtonPressed(Button.A, function () {
     dependencies: { core: '*' },
     steps: [
       {
-        title: 'Il servo accanto al braccio', mode: 'build', text: 'La catapulta e il bersaglio blu sono già pronti. Trascina il servo vicino alla catapulta: si mette in piedi, accanto al braccio.',
+        title: 'Il servo accanto al braccio', mode: 'build', text: 'Trascina il servo vicino alla catapulta: si mette in piedi, accanto al braccio.',
+        show: { drag: ['servo', 'catapultBase'] },
         goal: c => onHost(c, 'servo', 'catapultBase'),
         why: { q: 'Come si fa quella vera?', a: 'Segui il tutorial con un adulto: cartone, bastoncini e un elastico morbido. L\'elastico è il motore della catapulta.' },
       },
       {
         title: 'Collega il servo', mode: 'wire', text: 'Tocca la fine di un filo del servo, poi il suo posto sul micro:bit.',
+        show: { wire: SERVO_WIRES },
         goal: servoOk,
         checklist: servoChecklist,
         why: { q: 'E nel mondo vero?', a: 'I collegamenti li fa l\'adulto prima della lezione. Ferma ogni coccodrillo con un giro di nastro isolante, così non si stacca.' },
@@ -848,6 +933,7 @@ input.onButtonPressed(Button.A, function () {
       },
       {
         title: 'Il fermo', mode: 'build', text: 'Premi Ferma. Poi trascina il fermo sopra il braccio bianco del servo: va sopra il braccio della catapulta.',
+        show: { drag: ['catapultLatch', 'horn'] },
         goal: c => { const l = onServoOf(c, 'catapultLatch', 'catapultBase'); return !!l && Math.abs((l.rest ?? 0) - 90) < 10; },
         checklist: c => {
           const l = onServoOf(c, 'catapultLatch', 'catapultBase');
@@ -859,20 +945,24 @@ input.onButtonPressed(Button.A, function () {
       },
       {
         title: 'Carica e lancia!', mode: 'code', text: 'Premi Prova! Poi premi Carica: il braccio va giù e il fermo lo tiene. Poi premi A: il servo sposta il fermo e... via!',
+        acts: [{ text: 'Premi Prova!', done: c => c.running }, { text: 'Premi Carica: il braccio va giù e il fermo lo tiene.', done: c => c.running && (!!c.game.loaded || c.game.throws >= 1) }, { text: 'Premi A: il servo sposta il fermo e... via!', done: c => c.running && c.game.throws >= 1 }],
         goal: c => c.running && c.game.throws >= 1,
         why: { q: 'Chi lancia la pallina?', a: 'L\'elastico! Il servo non muove la catapulta: la tiene ferma, carica. È il grilletto. A 3 volt il servo è piccolo: basta che sposti il fermo.' },
       },
       {
         title: 'Fai centro!', mode: 'code', text: 'La pallina cade prima del bersaglio. Scegli 3 elastici. Poi premi Carica e A.',
+        acts: [{ text: 'La pallina cade prima del bersaglio. Scegli 3 elastici.', done: c => c.game.bands === 3 || c.game.hits >= 1 }, { text: 'Premi Carica, poi A.', done: c => c.running && c.game.hits >= 1 }],
         goal: c => c.running && c.game.hits >= 1,
         why: { q: 'Perché con 3 elastici va più lontano?', a: 'Più elastici tirano più forte il braccio: la pallina parte più veloce e vola più lontano. Con 1 elastico cade vicino. Puoi anche spostare il bersaglio.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Il servo lavora bene tra 10 e 170: a 0 arriva in fondo e ronza. Cambia 0 con 20. Poi premi Prova!, Carica e A: parte ancora?',
+        acts: [{ text: 'Cambia 0 con 20: a 0 il servo arriva in fondo e ronza.', done: c => !/AnalogPin\.P0,\s*0\)/.test(c.code) }, { text: 'Premi Prova!', done: ran }, { text: 'Premi Carica, poi A. Parte ancora?', done: c => c.runInStep && !/AnalogPin\.P0,\s*0\)/.test(c.code) && c.game.throws >= 1 }],
         goal: c => c.runInStep && !/AnalogPin\.P0,\s*0\)/.test(c.code) && c.game.throws >= 1,
         why: { q: 'E se metto 60?', a: 'Prova! Il fermo si sposta troppo poco e il braccio resta bloccato. Il numero giusto si trova provando: anche questo è calibrare.' },
       },
     ],
+    word: { term: 'Angolo', means: 'L\'angolo dice al servo quanto girare: da 0° a 180°. Il servo lavora bene tra 10 e 170.', quiz: { q: 'Quale angolo fa lavorare bene il servo?', options: ['0', '200', '90'], answer: 2 } },
     real: {
       materials: ['un micro:bit V2 con il portapile da 2 pile AAA (con l\'interruttore)', 'un micro servo SG90 con le crocette', '3 cavi a coccodrillo e il nastro isolante', 'i materiali della catapulta indicati nel tutorial', 'un elastico morbido', 'palline di carta o pon pon', 'biadesivo spesso e nastro di carta'],
       safety: [['adulto', 'I coccodrilli li attacca l\'adulto prima, con un giro di nastro isolante.'], ['adulto', 'Se il servo non riesce a sganciare, la catapulta la carica l\'adulto: tu premi solo A.'], ['solo', 'Elastico morbido, solo palline di carta, e mai verso le persone.']],

@@ -40,6 +40,14 @@ Pensato per bambini di 6-8 anni su tablet e telefono, non solo al computer:
 - **Catapulta**: la forza è degli elastici (1, 2 o 3): più elastici, più lontano vola la pallina. Se manca il bersaglio la pallina rimbalza due volte e si ferma; se fa centro resta nel secchiello. I messaggi dicono "troppo corto" o "troppo lungo".
 - **Luce**: la stanza ha tre luci (luna 10, lampadina 120, sole 250). Una mano o un biscotto davanti al sensore lasciano passare un po' di luce (il 12%), non zero: con il sole la soglia nel codice va cambiata, come nelle stanze vere.
 
+## Per chi sta imparando a leggere
+
+- **Una cosa alla volta**: ogni passo è diviso in azioni brevi (mai più di 16 parole). Si vede solo quella da fare adesso; fatta quella, compare la successiva.
+- **Leggi da solo**: ogni passo e ogni azione nuova vengono letti ad alta voce. Si spegne dal riquadro del passo (utile in classe) e resta spento.
+- **La manina**: se il bambino resta fermo 10 secondi, una manina mostra il gesto: quale pezzo toccare, cosa trascinare e dove, quali due cerchietti unire, quale pulsante premere.
+- **L'elettricità si vede**: puntini gialli corrono nei cavi dove passa la corrente (pile, servo, LED acceso, oggetto che conduce), nel verso giusto.
+- **La parola nuova**: alla fine di ogni progetto c'è una parola (Sensore, Conduttore, Servo, Calibrare...) con una domanda. Chi risponde giusto vince il distintivo, che resta in "Le mie parole" nella pagina del percorso.
+
 ## Per sviluppatori
 
 ```bash
