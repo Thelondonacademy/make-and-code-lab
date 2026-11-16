@@ -1,7 +1,7 @@
 // Il laboratorio: banco 3D, tavolozza dei pezzi, guida passo passo, MakeCode e "Prova!".
 import { PARTS, CATEGORIES, WIRE_COLORS, PALETTE_ORDER, mountsOf } from '../data/parts';
 import type { Level, Mode, LevelCtx } from '../data/levels';
-import { actsOf } from '../data/levels';
+import { actsOf, LESSONS } from '../data/levels';
 import { HandHint } from './handhint';
 import { analyze, canConnect, Issue, PartInst, Wire, Analysis, PIN_PADS } from '../sim/circuit';
 import { MicrobitRuntime, RadioBus, Bridge } from '../sim/runtime';
@@ -15,7 +15,7 @@ import { openCard } from './card';
 import { BuzzGame } from './buzzgame';
 import { HuntGame } from './huntgame';
 import { speak, canSpeak, stopSpeaking } from '../speech';
-import { tone, cheer } from '../audio';
+import { tone, cheer, fanfare } from '../audio';
 import { loadWork, saveWork, clearWork, saveStars, loadProgress, saveWord, getAutoRead, setAutoRead } from '../store';
 const FRUITS = new Set(['banana', 'apple', 'lemon', 'orange']);
 const PUB: string = (import.meta as any).env?.BASE_URL || './';
@@ -1698,9 +1698,15 @@ export class Workspace {
   private finish() {
     if (this.finished) return;
     this.finished = true;
+    const firstTime = !loadProgress().stars[this.level.id];
     saveStars(this.level.id, 3);
-    const total = Object.values(loadProgress().stars).reduce((a, b) => a + b, 0);
+    const stars = loadProgress().stars;
+    const total = Object.values(stars).reduce((a, b) => a + b, 0);
     this.q('.stars-n').textContent = String(total);
+    this.q('.stars-n').parentElement?.classList.add('bump');
+    // con questo progetto è finita tutta la lezione? Allora si vince anche il distintivo della lezione
+    const lesson = LESSONS.find(l => l.projects.some(p => p.level === this.level.id));
+    const medal = firstTime && !!lesson && lesson.projects.every(p => p.level && stars[p.level]);
     const R = this.level.real, W = this.level.word;
     this.hand.hide();
     const m = modal(`<div class="finale">
@@ -1708,6 +1714,7 @@ export class Workspace {
       <h2>Ce l'hai fatta!</h2>
       <div class="finale-stars">${img('star.svg', 48)}${img('star.svg', 56)}${img('star.svg', 48)}</div>
       <p class="lead">Hai finito <b>${esc(this.level.title)}</b>.${W ? '' : ' Ora costruiscilo davvero!'}</p>
+      ${medal ? `<div class="finale-medal">${icon('ph:trophy-fill', 40)}<div><b>Distintivo della Lezione ${lesson!.n}</b><span>Hai finito tutta la lezione «${esc(lesson!.title)}»!</span></div></div>` : ''}
       ${W ? `<div class="word-card">
         <span class="word-k">${icon('ph:medal-fill', 20)}Parola nuova</span>
         <h3>${esc(W.term)}</h3>
@@ -1733,6 +1740,8 @@ export class Workspace {
         <button class="btn" data-x="stay">Resta qui e gioca</button>
       </div></div></div>`, { wide: true, onClose: stopSpeaking });
     this.closeStepPop();
+    fanfare();
+    confetti(m.root.querySelector<HTMLElement>('.modal')!);
     m.root.querySelector('[data-x=stay]')!.addEventListener('click', m.close);
     m.root.querySelector('[data-x=dl]')!.addEventListener('click', () => { m.close(); this.setMode('code'); void this.download(); });
     m.root.querySelector('a[href="#/"]')!.addEventListener('click', m.close);
@@ -1839,6 +1848,22 @@ export class Workspace {
 }
 
 const norm = (s: string) => (s || '').replace(/\s+/g, '');
+/** Coriandoli che cadono dall'alto della finestra (niente coriandoli se il dispositivo chiede meno movimento). */
+function confetti(host: HTMLElement) {
+  if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  box.setAttribute('aria-hidden', 'true');
+  const colors = ['#F6520A', '#833CA3', '#F7941D', '#2E8B57', '#FFD95A', '#2F80D1'];
+  for (let i = 0; i < 44; i++) {
+    const c = document.createElement('i');
+    c.style.cssText = `left:${Math.random() * 100}%;background:${colors[i % colors.length]};--dx:${(Math.random() * 2 - 1) * 90}px;--rot:${(Math.random() * 2 - 1) * 720}deg;animation-delay:${Math.random() * 0.9}s;animation-duration:${1.8 + Math.random() * 1.4}s;${i % 3 === 0 ? 'border-radius:50%;' : ''}`;
+    box.appendChild(c);
+  }
+  host.appendChild(box);
+  setTimeout(() => box.remove(), 4200);
+}
+
 /** Materiali leggeri: possono stare uno sopra l'altro (un LED dentro il rotolo, una pallina nel bicchiere). */
 const LOOSE = new Set(['led', 'resistor', 'cardboardBox', 'cardboardPanel', 'paperCup', 'straw', 'cardboardTube', 'foilBall']);
 const TILTABLE = new Set(['servo', 'cardboardBox', 'cardboardPanel', 'paperCup', 'cardboardTube', 'battery']);

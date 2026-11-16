@@ -21,3 +21,9 @@ export function tone(freq: number, ms: number) {
 export function cheer() {
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 120), i * 110));
 }
+
+/** La festa di fine progetto: tre stelle (una nota ciascuna) e poi l'accordo finale. */
+export function fanfare() {
+  [659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 150), 250 + i * 300));
+  setTimeout(() => { tone(523, 420); tone(659, 420); tone(784, 420); tone(1047, 420); }, 1250);
+}

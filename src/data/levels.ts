@@ -158,8 +158,8 @@ export const LEVELS: Level[] = [
     namespaces: ['basic', 'input', 'music', 'loops'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco. È il cervello del progetto.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Ora trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco. È il cervello del progetto.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Ora trascina le pile vicino al micro:bit.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       {
         title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa in alto sul micro:bit.',
         show: { wire: POWER_WIRES },
@@ -206,8 +206,8 @@ basic.forever(function () {
     namespaces: ['basic', 'input', 'variables', 'logic'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Il contapassi gira libero: niente cavo USB.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Il contapassi gira libero: niente cavo USB.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       {
         title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.',
         show: { wire: POWER_WIRES },
@@ -272,8 +272,8 @@ basic.forever(function () {
     namespaces: ['basic', 'input', 'logic'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'Fai notte', mode: 'code', text: 'Premi Prova! Poi premi la luna: si fa buio e il micro:bit si accende!',
@@ -332,8 +332,8 @@ input.onGesture(Gesture.Shake, function () {
     namespaces: ['basic', 'input', 'Math', 'variables', 'logic'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Così puoi giocare tenendolo in mano.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit. Così puoi giocare tenendolo in mano.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'Scuoti!', mode: 'code', text: 'Premi Prova! Poi premi "Scuoti". Il micro:bit sceglie: sasso, carta o forbice.',
@@ -377,8 +377,8 @@ input.onGesture(Gesture.Shake, function () {
     namespaces: ['basic', 'input', 'logic'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'Il piano di prova', mode: 'build', text: 'Trascina il piano di prova sul banco: un cartoncino con due graffette.',
@@ -451,8 +451,8 @@ input.onGesture(Gesture.Shake, function () {
     namespaces: ['basic', 'input', 'music', 'logic'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'Il filo e l\'anello', mode: 'build', text: 'Trascina sul banco il gioco del filo: un filo a onde e un anello.',
@@ -517,8 +517,8 @@ input.onPinPressed(TouchPin.P2, function () {
     namespaces: ['basic', 'input', 'music'],
     dependencies: { core: '*' },
     steps: [
-      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', goal: c => has(c, 'microbit') },
-      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
+      { title: 'Prendi il cervello', mode: 'build', text: 'Trascina il micro:bit sul banco.', show: { add: 'microbit' }, goal: c => has(c, 'microbit') },
+      { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', show: { add: 'battery' }, goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
         title: 'La frutta', mode: 'build', text: 'Metti sul banco la banana, la mela, il limone e l\'arancia.',

@@ -28,26 +28,45 @@ export function homePage(): HTMLElement {
     const prev = LEVELS[i - 1];
     return prog.stars[prev.id] ? null : prev.title;
   };
+  // il percorso a tappe: ogni progetto è una tappa, in fondo a ogni lezione c'è il distintivo
+  const nextUp = LEVELS.find(l => !prog.stars[l.id] && !lockedBy(l.id));
+  const medals = LESSONS.filter(l => l.projects.some(p => p.level) && l.projects.every(p => p.level && prog.stars[p.level])).length;
   const lessons = LESSONS.map((l, i) => {
     const playable = l.projects.some(p => p.level && !lockedBy(p.level));
-    const finished = l.projects.filter(p => p.level).every(p => prog.stars[p.level!]);
-    const status = !playable ? `<span class="status status-soon">${icon('ph:lock-simple-fill', 14)}${l.projects.some(p => p.level) ? 'Bloccata' : 'In arrivo'}</span>`
+    const ready = l.projects.some(p => p.level);
+    const finished = ready && l.projects.every(p => p.level && prog.stars[p.level]);
+    const status = !playable ? `<span class="status status-soon">${icon('ph:lock-simple-fill', 14)}${ready ? 'Bloccata' : 'In arrivo'}</span>`
       : finished ? `<span class="status status-done">${icon('ph:check-bold', 14)}Fatto</span>`
         : `<span class="status status-open">${icon('ph:play-fill', 14)}Aperta</span>`;
+    let prevDone = true; // la strada fino a questa tappa è già stata fatta?
     const tiles = l.projects.map(p => {
       const lv = p.level ? levelById(p.level) : null;
       const stars = p.level ? prog.stars[p.level] || 0 : 0;
-      if (!lv) return `<div class="tile tile-lock" aria-disabled="true" title="Questo progetto non è ancora pronto"><span class="badge" style="background:#E9E4DE;color:#8A847D">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:gear-six-fill', 14)}In costruzione</span></div>`;
+      const road = prevDone ? 'road-done' : '';
+      prevDone = !!stars;
+      if (!lv) return `<div class="tile tile-lock tile-soon ${road}" aria-disabled="true" title="Questo progetto non è ancora pronto"><span class="badge">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:gear-six-fill', 14)}In costruzione</span></div>`;
       const lock = lockedBy(lv.id);
-      if (lock) return `<div class="tile tile-lock" aria-disabled="true"><span class="badge" style="background:#E9E4DE;color:#8A847D">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot">${icon('ph:lock-simple-fill', 14)}Prima finisci «${esc(lock)}»</span></div>`;
-      return `<a class="tile" href="#/livello/${lv.id}"><span class="badge" style="background:${COLORS[i]}">${icon(p.icon, 36)}</span><span class="tile-name">${esc(p.title)}</span>
-        <span class="tile-foot">${stars ? `<span class="mini-stars">${img('star.svg', 18)}${img('star.svg', 18)}${img('star.svg', 18)}</span>` : `<span class="go">Gioca</span>`}</span></a>`;
+      if (lock) return `<div class="tile tile-lock ${road}" aria-disabled="true" title="Prima finisci «${esc(lock)}»"><span class="badge">${icon(p.icon, 36)}<i class="pin pin-lock">${icon('ph:lock-simple-fill', 14)}</i></span><span class="tile-name">${esc(p.title)}</span><span class="tile-foot"><span class="sr">Prima finisci «${esc(lock)}»</span></span></div>`;
+      const now = lv.id === nextUp?.id;
+      return `<a class="tile ${stars ? 'tile-done' : ''} ${now ? 'tile-now' : ''} ${road}" href="#/livello/${lv.id}"><span class="badge" style="background:${COLORS[i]}">${icon(p.icon, 36)}${stars ? `<i class="pin pin-ok">${icon('ph:check-bold', 14)}</i>` : ''}</span><span class="tile-name">${esc(p.title)}</span>
+        <span class="tile-foot">${stars ? `<span class="mini-stars">${img('star.svg', 18)}${img('star.svg', 18)}${img('star.svg', 18)}</span>` : `<span class="go">${now ? 'Tocca a te!' : 'Gioca'}</span>`}</span></a>`;
     }).join('');
-    return `<section class="lesson ${playable && !finished ? 'lesson-open' : ''}">
+    const medal = `<div class="tile medal ${finished ? 'medal-won' : ''} ${prevDone ? 'road-done' : ''}" title="${finished ? `Distintivo vinto: ${esc(l.title)}` : 'Finisci tutti i progetti della lezione per vincere il distintivo'}">
+      <span class="badge">${icon('ph:trophy-fill', 34)}</span><span class="tile-name">Distintivo</span><span class="tile-foot">${finished ? 'Vinto!' : `<span class="sr">Non ancora vinto</span>`}</span></div>`;
+    return `<section class="lesson ${playable && !finished ? 'lesson-open' : ''} ${finished ? 'lesson-done' : ''}">
       <div class="lesson-head"><span class="lesson-n" style="background:${playable ? COLORS[i] : '#E9E4DE'};color:${playable ? '#fff' : '#5E5A60'}">${l.n}</span>
       <div><small>LEZIONE ${l.n}</small><h2>${esc(l.title)}</h2></div>${status}</div>
-      <div class="tiles" style="grid-template-columns:repeat(${l.projects.length},minmax(0,1fr))">${tiles}</div></section>`;
+      <div class="tiles trail" style="--n:${l.projects.length + 1}">${tiles}${medal}</div></section>`;
   }).join('');
+  const nextLesson = nextUp && LESSONS.find(l => l.projects.some(p => p.level === nextUp.id));
+  const nextIcon = nextLesson?.projects.find(p => p.level === nextUp!.id)?.icon;
+  const upNext = nextUp && nextLesson
+    ? `<a class="next-up" href="#/livello/${nextUp.id}"><span class="badge" style="background:${COLORS[LESSONS.indexOf(nextLesson)]}">${icon(nextIcon!, 40)}</span>
+        <div><small>${done ? 'Tocca a te!' : 'Comincia da qui'}</small><b>${esc(nextUp.title)}</b><span>Lezione ${nextLesson.n} · ${esc(nextLesson.title)}</span></div>
+        <span class="btn btn-go">${icon('ph:play-fill', 22)}Gioca</span></a>`
+    : `<a class="next-up next-free" href="#/libero"><span class="badge" style="background:var(--green)">${icon('ph:trophy-fill', 40)}</span>
+        <div><small>Bravissimo!</small><b>Hai finito tutti i progetti</b><span>Ora inventa il tuo robot nel Laboratorio libero.</span></div>
+        <span class="btn btn-go">${icon('ph:play-fill', 22)}Inventa</span></a>`;
 
   // le parole nuove: una per progetto, si vince rispondendo alla domanda finale
   const withWord = LEVELS.filter(l => l.word);
@@ -70,10 +89,12 @@ export function homePage(): HTMLElement {
           ${name ? '' : `<form class="name-form"><label>Come ti chiami? <input name="n" maxlength="20" autocomplete="off"></label><button class="btn btn-small">Ok</button></form>`}
         </div>
         <div class="score-col">
-          <div class="score">${img('star.svg', 36)}<div><b>${total} stelle</b><small>${done} ${done === 1 ? 'progetto finito' : 'progetti finiti'}</small></div></div>
+          <div class="score">${img('star.svg', 36)}<div><b>${total} stelle</b><small>${done} ${done === 1 ? 'progetto finito' : 'progetti finiti'}</small></div>
+            <span class="score-medals" title="Distintivi delle lezioni">${icon('ph:trophy-fill', 22)}<b>${medals}</b></span></div>
           <button class="btn btn-small btn-unlock" data-unlock="${unlockAll ? '0' : '1'}">${icon(unlockAll ? 'ph:lock-simple-fill' : 'ph:check-bold', 16)}${unlockAll ? 'Blocca di nuovo i livelli' : 'Sblocca tutti i livelli'}</button>
         </div>
       </div>
+      ${upNext}
       ${words}
       <div class="lessons">${lessons}</div>
       <a class="free" href="#/libero">${img('toolbox.svg', 56)}<div><b>Laboratorio libero</b><span>Inventa il tuo robot con tutti i pezzi.</span></div><span class="btn">Inizia a inventare</span></a>

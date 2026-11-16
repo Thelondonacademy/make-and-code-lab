@@ -48,6 +48,10 @@ Pensato per bambini di 6-8 anni su tablet e telefono, non solo al computer:
 - **L'elettricità si vede**: puntini gialli corrono nei cavi dove passa la corrente (pile, servo, LED acceso, oggetto che conduce), nel verso giusto.
 - **La parola nuova**: alla fine di ogni progetto c'è una parola (Sensore, Conduttore, Servo, Calibrare...) con una domanda. Chi risponde giusto vince il distintivo, che resta in "Le mie parole" nella pagina del percorso.
 
+## Il percorso
+
+La pagina iniziale è un percorso a tappe: ogni progetto è una tappa, la strada già fatta diventa verde, la tappa da fare pulsa ("Tocca a te!") e in alto c'è sempre un solo pulsante grande per continuare. In fondo a ogni lezione c'è un distintivo, che si vince finendo tutti i progetti. Alla fine di un progetto c'è la festa: tre stelle che arrivano una alla volta con il loro suono, i coriandoli e, se la lezione è finita, il distintivo.
+
 ## Per sviluppatori
 
 ```bash
