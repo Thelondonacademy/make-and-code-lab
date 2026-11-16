@@ -19,7 +19,7 @@ Il laboratorio 3D, gratuito e open source, per costruire robot con il **micro:bi
 - **Non toccare il filo!** (lezione 2): il classico gioco del filo (GND al filo, pin 0 all'anello). Se si toccano: X e suono, altrimenti faccina felice. Nel simulatore c'è il minigioco: trascini l'anello lungo il filo con il dito o il mouse.
 - **Il piano di frutta** (lezione 2): dal progetto "Banana keyboard" di MakeCode. GND all'arancia (da tenere in mano), pin 0/1/2 a banana, mela e limone: ogni frutto suona una nota (Do, Mi, Sol). Il simulatore spiega che senza il frutto al GND in mano il circuito non si chiude.
 - **Il mostro del latte** (lezione 4): dal Milky Monster di MakeCode, come nel copione dell'episodio 4. Il micro:bit sotto la bocca è l'occhio: quando arriva un biscotto fa buio e il servo sul tappo tira lo spago, la bocca si apre. Si calibra il servo a 180 prima di legare lo spago.
-- **La catapulta** (lezione 4): dalla catapulta di Instructables, come nel copione. Il servo è il grilletto: il fermo sul suo braccio tiene giù la catapulta carica, con A si sposta e l'elastico lancia. Si calibra a 90 prima di montare il fermo; poi si cerca un angolo di sgancio tra 10 e 170.
+- **La catapulta** (lezione 4): dalla catapulta di Instructables, come nel copione. Il servo è il grilletto: il fermo sul suo braccio tiene giù la catapulta carica, con A si sposta e l'elastico lancia. Si calibra a 90 prima di montare il fermo; si fa centro scegliendo quanti elastici usare; poi si cerca un angolo di sgancio tra 10 e 170.
 - **Messaggi segreti** e **Caccia al tesoro** (lezione 3): la radio tra due micro:bit. Sul banco ci vanno due micro:bit con le loro pile: fanno girare lo stesso programma (il secondo è quello dell'amico, con i pulsanti viola). Il gruppo della radio è il canale segreto. Nella caccia al tesoro un micro:bit trasmette e l'altro misura la forza del segnale: nel minigioco trascini il cercatore in giardino.
 - **Luna che scodinzola**: un cagnolino di carta con il servo nella pancia e la stagnola sulla schiena. Accarezzi la stagnola (pin 1, tocco capacitivo del V2) e la coda scodinzola. Energia dal cavo USB o dalle pile. Le sagome da stampare sono in `public/paper-pet/luna-sagome.pdf` (disegni in `art/luna`; si rigenerano con `python3 scripts/process-luna-art.py` e poi `python3 scripts/build-paper-pet.py`).
 
@@ -33,6 +33,12 @@ Pensato per bambini di 6-8 anni su tablet e telefono, non solo al computer:
 - **Pezzi**: ogni pezzo nuovo compare in un posto libero e visibile (mai sotto i pulsanti, mai davanti a un pezzo alto); un pezzo lasciato sopra un altro scivola accanto invece di sparirci dentro.
 - **Vista**: un dito sul banco vuoto la fa scorrere (non la gira) e non si esce mai dal banco; per girarla ci sono due dita o il pulsante tondo; la casetta rimette tutto in vista. La vista scivola, non salta.
 - **Misure**: pulsanti da almeno 44 px sul tocco, scritte da almeno 14 px, guida corta su telefono e tablet in verticale per lasciare spazio al banco.
+
+## Un po' di fisica vera
+
+- **Cavi**: escono dalla pinza, scendono e si appoggiano sul banco; se sulla strada c'è un pezzo ci passano sopra, non attraverso. Due cavi vicini non si sovrappongono.
+- **Catapulta**: la forza è degli elastici (1, 2 o 3): più elastici, più lontano vola la pallina. Se manca il bersaglio la pallina rimbalza due volte e si ferma; se fa centro resta nel secchiello. I messaggi dicono "troppo corto" o "troppo lungo".
+- **Luce**: la stanza ha tre luci (luna 10, lampadina 120, sole 250). Una mano o un biscotto davanti al sensore lasciano passare un po' di luce (il 12%), non zero: con il sole la soglia nel codice va cambiata, come nelle stanze vere.
 
 ## Per sviluppatori
 

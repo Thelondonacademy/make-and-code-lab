@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PARTS } from '../data/parts';
+import { wirePath, type Obstacle } from './wirepath';
 import type { PartInst, Wire } from '../sim/circuit';
 import { buildPart, attachPose, bodyPose, hostPose, petLeadEnds, jawOpen, Built, mat, COLORS } from './builders';
 import { WIRE_COLORS, mountOf, mountsOf } from '../data/parts';
@@ -157,10 +158,11 @@ export class Scene3D {
     const t = performance.now() / 1000;
     for (const h of this.highlights) { const s = 1 + 0.25 * Math.sin(t * 6); h.scale.set(s, s, s); }
     if (this.flying) {
-      const f = this.flying, k = Math.min(1, (performance.now() - f.t0) / f.dur);
-      f.m.position.lerpVectors(f.from, f.to, k);
-      f.m.position.y = f.from.y + (f.to.y - f.from.y) * k + f.h * 4 * k * (1 - k);
-      if (k >= 1) { this.landed = f.m; this.flying = null; }
+      const f = this.flying, hop = f.hops[0], k = Math.min(1, (performance.now() - f.t0) / hop.dur);
+      f.m.position.lerpVectors(hop.from, hop.to, k);
+      f.m.position.y = hop.from.y + (hop.to.y - hop.from.y) * k + hop.h * 4 * k * (1 - k);
+      f.m.rotation.x -= 0.25;
+      if (k >= 1) { f.hops.shift(); f.t0 = performance.now(); if (!f.hops.length) { this.landed = f.m; this.flying = null; } }
     }
     for (const [id, t0] of this.bumps) {
       const o = this.objs.get(id);
@@ -301,10 +303,11 @@ export class Scene3D {
   private hemi!: THREE.HemisphereLight;
   private sun!: THREE.DirectionalLight;
   /** Notte nella stanza: le luci si abbassano e le lucine del micro:bit si vedono meglio. */
-  setNight(on: boolean) {
-    this.hemi.intensity = on ? 0.22 : 1.6;
-    this.sun.intensity = on ? 0.12 : 1.8;
-    (this.scene.background as THREE.Color).set(on ? 0x2a2d45 : 0xf5f0ea);
+  /** La luce della stanza: 0 buio, 1 lampada (normale), 2 sole pieno. */
+  setRoomLight(level: number) {
+    this.hemi.intensity = [0.22, 1.6, 2.0][level] ?? 1.6;
+    this.sun.intensity = [0.12, 1.8, 2.7][level] ?? 1.8;
+    (this.scene.background as THREE.Color).set([0x2a2d45, 0xf5f0ea, 0xfff4d6][level] ?? 0xf5f0ea);
   }
 
   /** Catapulta: dov'è la pallina nel cucchiaio (in coordinate del banco). */
@@ -313,21 +316,40 @@ export class Scene3D {
     return b ? b.getWorldPosition(new THREE.Vector3()) : null;
   }
   /** Catapulta: angolo del braccio (0 = carico, 100 = scattato) e pallina nel cucchiaio. */
-  setCatapult(baseId: string, deg: number, ball: boolean) { this.objs.get(baseId)?.built.setCatapult?.(deg, ball); }
+  setCatapult(baseId: string, deg: number, ball: boolean, bands = 2) { this.objs.get(baseId)?.built.setCatapult?.(deg, ball, bands); }
   /** Il biscotto davanti all'occhio del mostro. */
   setCookie(on: boolean) { for (const o of this.objs.values()) if (o.inst.type === 'milkCarton') { const c = o.built.group.getObjectByName('cookie'); if (c) c.visible = on; } }
-  private flying: { m: THREE.Mesh; from: THREE.Vector3; to: THREE.Vector3; t0: number; dur: number; h: number } | null = null;
+  // la pallina in volo: una serie di salti (il lancio, poi i rimbalzi sempre più bassi)
+  private flying: { m: THREE.Mesh; hops: { from: THREE.Vector3; to: THREE.Vector3; dur: number; h: number }[]; t0: number } | null = null;
   private landed: THREE.Mesh | null = null;
-  /** La pallina vola dal cucchiaio fino a dove cade (parabola). */
-  throwBall(from: THREE.Vector3, to: THREE.Vector3) {
+  /** Lancia la pallina. `inside`: cade dentro il bersaglio e ci resta; altrimenti tocca il banco e rimbalza due volte. */
+  throwBall(from: THREE.Vector3, to: THREE.Vector3, inside = false, wall?: { x: number; z: number; r: number }) {
     this.landed?.removeFromParent();
     this.flying?.m.removeFromParent();
-    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(0xd4d8de, { metalness: 0.7, roughness: 0.35, flatShading: true }));
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), mat(0xf4f1ea, { roughness: 0.95, flatShading: true }));
     m.castShadow = true;
     m.position.copy(from);
     this.scene.add(m);
     const d = Math.hypot(to.x - from.x, to.z - from.z);
-    this.flying = { m, from: from.clone(), to: to.clone(), t0: performance.now(), dur: 450 + d * 30, h: 3 + d * 0.35 };
+    const hops = [{ from: from.clone(), to: to.clone(), dur: 450 + d * 30, h: 3 + d * 0.35 }];
+    if (!inside && d > 0.01) {
+      const dir = new THREE.Vector3(to.x - from.x, 0, to.z - from.z).normalize();
+      let at = to.clone();
+      for (const [len, h] of [[d * 0.22, 2.2], [d * 0.09, 0.8]]) {
+        const next = at.clone().addScaledVector(dir, len);
+        next.x = clamp(next.x, -TABLE.w / 2 + 1, TABLE.w / 2 - 1); next.z = clamp(next.z, -TABLE.d / 2 + 1, TABLE.d / 2 - 1);
+        // il bersaglio è un muro: la pallina che rimbalza ci si ferma contro, non ci passa attraverso
+        let stop = false;
+        if (wall) for (let k = 0; k <= 1.0001; k += 0.1) {
+          const px = at.x + (next.x - at.x) * k, pz = at.z + (next.z - at.z) * k;
+          if (Math.hypot(px - wall.x, pz - wall.z) < wall.r + 0.6) { const kk = Math.max(0, k - 0.1); next.set(at.x + (next.x - at.x) * kk, next.y, at.z + (next.z - at.z) * kk); stop = true; break; }
+        }
+        hops.push({ from: at, to: next, dur: 240 + len * 40, h: stop ? h * 0.5 : h });
+        at = next;
+        if (stop) break;
+      }
+    }
+    this.flying = { m, hops, t0: performance.now() };
   }
   clearBalls() { this.landed?.removeFromParent(); this.landed = null; this.flying?.m.removeFromParent(); this.flying = null; }
 
@@ -475,20 +497,35 @@ export class Scene3D {
 
   // ---------- fili ----------
 
-  private wireCurve(a: THREE.Vector3, b: THREE.Vector3) {
-    const dist = a.distanceTo(b);
-    const lift = Math.min(6, 1.2 + dist * 0.18);
-    return new THREE.CatmullRomCurve3([
-      a.clone().add(new THREE.Vector3(0, 0.3, 0)),
-      a.clone().lerp(b, 0.3).add(new THREE.Vector3(0, lift, 0)),
-      a.clone().lerp(b, 0.7).add(new THREE.Vector3(0, lift, 0)),
-      b.clone().add(new THREE.Vector3(0, 0.3, 0)),
-    ]);
+  /** Gli ingombri dei pezzi sul banco: i cavi ci passano sopra, non attraverso. */
+  private obstacles: (Obstacle & { id: string })[] = [];
+  private scanObstacles() {
+    this.obstacles = [];
+    for (const o of this.objs.values()) {
+      if (o.inst.attachedTo) continue;
+      const box = new THREE.Box3().setFromObject(o.built.group);
+      if (box.isEmpty() || box.max.y < 0.5) continue;
+      this.obstacles.push({ id: o.inst.id, minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z, top: box.max.y });
+    }
   }
+  /** Il pezzo sul banco a cui appartiene un morsetto (risalendo: braccio → servo → cartone). */
+  private rootOf(ref: string) {
+    let o = this.objs.get(ref.split(':')[0]);
+    while (o?.inst.attachedTo && this.objs.get(o.inst.attachedTo)) o = this.objs.get(o.inst.attachedTo);
+    return o?.inst.id;
+  }
+  private wireCurve(a: THREE.Vector3, b: THREE.Vector3, refs?: [string, string | null], seed = 0) {
+    const skip = new Set(refs ? [this.rootOf(refs[0]), refs[1] ? this.rootOf(refs[1]) : undefined] : []);
+    const obs = refs ? this.obstacles.filter(o => !skip.has(o.id)) : [];
+    const pts = wirePath([a.x, a.y, a.z], [b.x, b.y, b.z], obs, seed).map(p => new THREE.Vector3(p[0], p[1], p[2]));
+    return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  }
+  private wireSeed(id: string) { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
 
   private rebuildWires() {
     for (const m of this.wireMeshes.values()) m.removeFromParent();
     this.wireMeshes.clear();
+    this.scanObstacles();
     for (const w of this.wires) {
       if (this.drag?.kind === 'wireEnd' && this.drag.wireId === w.id && this.drag.moved) continue;
       const a = this.termWorld(w.a), b = this.termWorld(w.b);
@@ -498,7 +535,7 @@ export class Scene3D {
       const sel = w.id === this.selWire;
       const isUsb = w.a.endsWith(':USBPLUG') || w.b.endsWith(':USBPLUG');
       const isPower = isUsb || w.a.endsWith(':PLUG') || w.b.endsWith(':PLUG');
-      const curve = this.wireCurve(a, b);
+      const curve = this.wireCurve(a, b, [w.a, w.b], this.wireSeed(w.id));
       if (isUsb) {
         const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, sel ? 0.2 : 0.14, 6), sel ? this.selMat(0x55585f) : mat(0x55585f));
         t.castShadow = true;
@@ -671,7 +708,7 @@ export class Scene3D {
     const w = this.wires.find(x => x.id === id);
     const a = w && this.termWorld(w.a), b = w && this.termWorld(w.b);
     if (!a || !b) return null;
-    return this.toClient(this.wireCurve(a, b).getPoint(0.5));
+    return this.toClient(this.wireCurve(a, b, [w.a, w.b], this.wireSeed(w.id)).getPoint(0.5));
   }
 
   clipClient(id: string, end: 'a' | 'b') {

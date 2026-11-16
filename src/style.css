@@ -579,3 +579,27 @@ a.tile:hover { border-color: var(--orange); color: var(--ink); transform: transl
   .ck { width: 24px; height: 24px; border-width: 2px; font-size: 13px; }
   .sw { width: 16px; height: 16px; border-radius: 5px; }
 }
+
+/* ---------- scelta a tre: luce della stanza (luna, lampada, sole), elastici della catapulta (1, 2, 3) ---------- */
+.mb-seg { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 4px; border-radius: 30px; background: #fff; border: 3px solid var(--line); }
+.mb-segl { font-size: 14px; font-weight: 700; padding: 0 4px 0 8px; color: var(--ink); }
+.mb-segb { width: 46px; height: 46px; border-radius: 50%; border: 3px solid transparent; background: var(--bg); color: var(--grey); font-family: inherit; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mb-segb.on { background: #FFE9A8; border-color: #E8A33D; color: var(--ink); }
+.mb-segb:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+@media (max-width: 760px), (max-height: 520px) and (orientation: landscape) { .mb-seg { margin-left: 0; } .mb-segb { width: 44px; height: 44px; } }
+
+/* telefono e tablet in verticale, durante la prova: il banco prende lo spazio, i blocchi si stringono (tornano grandi con Ferma) */
+@media (max-width: 920px) {
+  .ws.running.mode-code .ws-body { grid-template-rows: minmax(260px, 64%) minmax(0, 1fr); }
+  .hint-run { gap: 6px; padding: 8px; }
+  .hint-run .mb-label { display: none; }
+  .running .view-btns [data-act=zin], .running .view-btns [data-act=zout], .running .view-btns [data-act=view] { display: none; }
+  .hint-run { max-width: calc(100% - 68px); }
+  .mb-pet { white-space: nowrap; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .ws.running.mode-code .ws-body { grid-template-rows: minmax(0, 1fr); grid-template-columns: 58% minmax(0, 1fr); }
+}
+.hint-run .mb-pet, .hint-run .mb-seg, .hint-run .mb-btn { flex-shrink: 0; }
+.mb-btn.mb-pet { width: auto; }
+@media (max-height: 520px) and (orientation: landscape) { .mb-btn { width: 44px; height: 44px; } .mb-btn.mb-pet, .mb-btn.mb-ab { width: auto; } }

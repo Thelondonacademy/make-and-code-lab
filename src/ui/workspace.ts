@@ -468,7 +468,7 @@ export class Workspace {
     // quanto banco coprono i pulsanti ai lati e il suggerimento in alto
     const wrap = this.q('.canvas-wrap').getBoundingClientRect();
     const vis = (sel: string) => { const e = this.root.querySelector<HTMLElement>(sel); const r = e && !e.hidden ? e.getBoundingClientRect() : null; return r && r.width ? r : null; };
-    const col = vis('.wire-colors'), vb = vis('.view-btns'), hint = this.running ? null : vis('.hint');
+    const col = vis('.wire-colors'), vb = vis('.view-btns'), hint = vis('.hint');
     const side = vb && vb.height > vb.width;
     const pad = {
       x: 16 + 2 * Math.max(col ? col.right - wrap.left : 0, vb && side ? wrap.right - vb.left : 0),
@@ -791,7 +791,7 @@ export class Workspace {
       this.stopRun();
       this.tested = {};
       this.game = { touches: 0, finished: false, played: false, throws: 0, hits: 0 };
-      this.cata.clear();
+      this.cata.clear(); this.bands = 2;
       clearWork(this.level.id);
       this.parts = structuredClone(this.level.start.parts);
       this.wires = structuredClone(this.level.start.wires);
@@ -1028,7 +1028,7 @@ export class Workspace {
   }
   private cataState(base: PartInst) {
     let st = this.cata.get(base.id);
-    if (!st) { st = { loaded: false, deg: 100, firing: false, told: false }; this.cata.set(base.id, st); this.scene.setCatapult(base.id, 100, false); }
+    if (!st) { st = { loaded: false, deg: 100, firing: false, told: false }; this.cata.set(base.id, st); this.scene.setCatapult(base.id, 100, false, this.bands); }
     return st;
   }
   private catapultFrame(dt: number) {
@@ -1037,7 +1037,7 @@ export class Workspace {
       const st = this.cataState(base);
       if (st.firing) {
         st.deg = Math.min(100, st.deg + dt * 1100);
-        this.scene.setCatapult(base.id, st.deg, true);
+        this.scene.setCatapult(base.id, st.deg, true, this.bands);
         if (st.deg >= 100) { st.firing = false; this.launch(base); }
         continue;
       }
@@ -1054,26 +1054,40 @@ export class Workspace {
       if (!moved) st.told = false;
     }
   }
-  /** Il braccio sbatte sulla sbarra: la pallina vola in avanti. La forza è dell'elastico, quindi va sempre lontano uguale. */
+  /** Quanti elastici tirano il braccio (1, 2 o 3): più elastici, più forza, più lontano va la pallina. */
+  bands = 2;
+  setBands(n: number) {
+    this.bands = Math.max(1, Math.min(3, n));
+    for (const base of this.parts.filter(p => p.type === 'catapultBase')) { const st = this.cataState(base); if (!st.firing) this.scene.setCatapult(base.id, st.loaded ? 0 : 100, st.loaded, this.bands); }
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-bands]')) b.classList.toggle('on', Number(b.dataset.bands) === this.bands);
+  }
+  /** Il braccio sbatte sulla sbarra: la pallina vola in avanti. La spinge l'elastico, non il servo. */
   private launch(base: PartInst) {
     const from = this.scene.ballWorld(base.id);
-    this.scene.setCatapult(base.id, 100, false);
+    this.scene.setCatapult(base.id, 100, false, this.bands);
     if (!from) return;
     const ang = ((base.rot || 0) * Math.PI) / 4;
     let fwd = { x: -Math.sin(ang), z: -Math.cos(ang) }; // davanti alla catapulta (verso -z)
     const bk = this.parts.find(p => p.type === 'bucket');
+    let far = 0, ahead = false;
     if (bk) {
       // se il bersaglio è più o meno davanti, la catapulta è puntata verso di lui
       const bx = bk.x - from.x, bz = bk.z - from.z, bl = Math.hypot(bx, bz) || 1;
-      if ((bx * fwd.x + bz * fwd.z) / bl > Math.cos((60 * Math.PI) / 180)) fwd = { x: bx / bl, z: bz / bl };
+      far = bl;
+      if ((bx * fwd.x + bz * fwd.z) / bl > Math.cos((60 * Math.PI) / 180)) { fwd = { x: bx / bl, z: bz / bl }; ahead = true; }
     }
-    const D = 12;
+    const D = [7, 12, 17][this.bands - 1];
     const land = new (from.constructor as any)(from.x + fwd.x * D, 0.6, from.z + fwd.z * D);
-    this.scene.throwBall(from, land);
-    this.game.throws++;
     const hit = !!bk && Math.hypot(land.x - bk.x, land.z - bk.z) < 2.6;
+    this.scene.throwBall(from, land, hit, bk ? { x: bk.x, z: bk.z, r: 2.5 } : undefined);
+    this.game.throws++;
     if (hit) this.game.hits++;
-    setTimeout(() => toast(hit ? `${img('bullseye.svg', 26)}Centro! La pallina è nel bersaglio.` : `${img('catapult-base.svg', 26)}Via! Sposta il bersaglio dove cade la pallina.`, { kind: hit ? 'ok' : 'info', ms: 2800 }), 900);
+    const msg = hit ? `${img('bullseye.svg', 26)}Centro! La pallina è nel bersaglio.`
+      : !bk ? `${img('catapult-base.svg', 26)}Via! Metti un bersaglio dove cade la pallina.`
+      : !ahead ? `${img('bucket.svg', 26)}Il bersaglio non è davanti alla catapulta: spostalo davanti.`
+      : D < far ? `${img('catapult-base.svg', 26)}Troppo corto! ${this.bands < 3 ? 'Metti un elastico in più' : 'Avvicina il bersaglio'}.`
+      : `${img('catapult-base.svg', 26)}Troppo lungo! ${this.bands > 1 ? 'Togli un elastico' : 'Allontana il bersaglio'}.`;
+    setTimeout(() => toast(msg, { kind: hit ? 'ok' : 'info', ms: 3200 }), 900);
     this.evaluate();
   }
   /** "Carica": tiri giù il braccio. Resta giù solo se il fermo è al suo posto. */
@@ -1088,7 +1102,7 @@ export class Workspace {
     if (!latch) { toast(`${img('catapult-latch.svg', 26)}Manca il fermo sul braccio del servo: il braccio torna su da solo.`); return; }
     if (!this.latchClosed(base)) { toast(`${img('catapult-latch.svg', 26)}Il fermo non è sopra il braccio: il servo deve tornare dove l'hai calibrato.`); return; }
     st.loaded = true; st.deg = 0; st.told = false;
-    this.scene.setCatapult(base.id, 0, true);
+    this.scene.setCatapult(base.id, 0, true, this.bands);
     toast(`${img('catapult-base.svg', 26)}Carica! Il fermo tiene giù il braccio. Ora premi A.`, { kind: 'ok', ms: 3000 });
   }
 
@@ -1156,20 +1170,26 @@ export class Workspace {
   }
 
   // ---------- luce della stanza (luce notturna) ----------
-  private roomDark = false;
+  // 0 buio, 1 lampada, 2 sole. Una mano o un biscotto davanti al sensore lasciano passare poca luce, non zero:
+  // con il sole pieno il "buio" del biscotto è più chiaro, e la soglia nel codice va cambiata. Proprio come nelle stanze vere.
+  private roomLight = 1;
   private covered = false;
+  lightNow() { return Math.round([10, 120, 250][this.roomLight] * (this.covered ? 0.12 : 1)); }
   private applyLight() {
-    const v = this.roomDark || this.covered ? 0 : 200;
+    const v = this.lightNow();
     this.rt.setSensor('light', v);
+    for (const f of this.friends.values()) f.setSensor('light', v);
     const sl = this.root.querySelector<HTMLInputElement>('[data-sensor=light]');
     if (sl) sl.value = String(v);
-    this.scene.setNight(this.roomDark);
+    this.scene.setRoomLight(this.roomLight);
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-light]')) b.classList.toggle('on', Number(b.dataset.light) === this.roomLight);
   }
-  toggleRoom() { this.roomDark = !this.roomDark; this.applyLight(); this.renderHint(); }
+  setRoom(level: number) { this.roomLight = Math.max(0, Math.min(2, level)); this.applyLight(); }
+  toggleRoom() { this.setRoom(this.roomLight === 0 ? 1 : 0); }
   cover(on: boolean) { this.covered = on; this.applyLight(); this.scene.setCookie(on); this.q<HTMLElement>('.mb-cover')?.classList.toggle('down', on); }
 
   private setRunning(r: boolean) {
-    if (r !== this.running) { this.roomDark = false; this.covered = false; this.applyLight(); this.scene.setCookie(false); }
+    if (r !== this.running) { this.roomLight = 1; this.covered = false; this.applyLight(); this.scene.setCookie(false); }
     this.running = r;
     if (!r) { this.closeBuzz(); this.hunt?.close(); this.stopFriends(); }
     this.padTouch.clear();
@@ -1190,6 +1210,8 @@ export class Workspace {
       for (const [id, lvl] of this.hw.ledLevel) this.scene.setLed(id, lvl);
     }
     this.positionSelTools();
+    // con la prova compare la barra dei pulsanti: se finisce sopra un pezzo, la vista si sistema
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (this.scene && this.parts.some(p => !p.attachedTo && this.covered_(p.x, p.z))) this.frame(); }));
     this.renderHint();
     this.renderIssues();
     this.evaluate();
@@ -1437,13 +1459,14 @@ export class Workspace {
     const h = this.q('.hint');
     let html = '';
     if (this.running) html = `<span class="mb-label">${this.friends.size ? 'Il tuo micro:bit' : 'Pulsanti del micro:bit'}</span>
-      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<button class="mb-btn mb-pet mb-light" aria-label="${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}">${icon(this.roomDark ? 'ph:sun-fill' : 'ph:moon-fill', 24)}${this.roomDark ? 'Accendi la luce' : 'Spegni la luce'}</button>${this.parts.some(p => p.type === 'milkCarton') ? `<button class="mb-btn mb-pet mb-cover" aria-label="Avvicina il biscotto (tieni premuto)">${img('cookie.svg', 26)}Biscotto</button>` : `<button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>`}` : ''}${this.parts.some(p => p.type === 'catapultBase') ? `<button class="mb-btn mb-pet mb-load" aria-label="Carica la catapulta">${img('catapult-base.svg', 26)}Carica</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.friends.size ? `<span class="mb-label">Il micro:bit dell'amico</span><button class="mb-btn mb-friend" data-fbtn="A" aria-label="Pulsante A dell'amico">A</button><button class="mb-btn mb-friend" data-fbtn="B" aria-label="Pulsante B dell'amico">B</button>` : ''}${/RadioPacketProperty\.SignalStrength/.test(this.code) && this.friends.size ? `<button class="mb-btn mb-pet mb-hunt" aria-label="Gioca alla caccia al tesoro">${img('compass.svg', 26)}Cerca il tesoro</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
+      <button class="mb-btn" data-btn="A" aria-label="Pulsante A">A</button><button class="mb-btn" data-btn="B" aria-label="Pulsante B">B</button><button class="mb-btn mb-ab" data-btn="AB" aria-label="Pulsanti A e B insieme">A+B</button>${this.fruitKeys().map(f => `<button class="mb-btn mb-pet mb-fruit" data-fruit="${f.id}" aria-label="Tocca: ${esc(PARTS[f.type].name)}">${img(PARTS[f.type].icon, 26)}${esc(PARTS[f.type].name.split(' ')[0])}</button>`).join('')}${this.parts.some(p => p.type === 'buzzWire') ? `<button class="mb-btn mb-pet mb-buzz" aria-label="Gioca: non toccare il filo">${img('buzzwire.svg', 26)}Gioca</button>` : ''}${/input\.lightLevel/.test(this.code) ? `<span class="mb-seg" role="group" aria-label="Luce della stanza"><button class="mb-segb ${this.roomLight === 0 ? 'on' : ''}" data-light="0" aria-label="Buio">${icon('ph:moon-fill', 24)}</button><button class="mb-segb ${this.roomLight === 1 ? 'on' : ''}" data-light="1" aria-label="Lampada">${icon('ph:lightbulb-fill', 24)}</button><button class="mb-segb ${this.roomLight === 2 ? 'on' : ''}" data-light="2" aria-label="Sole">${icon('ph:sun-fill', 24)}</button></span>${this.parts.some(p => p.type === 'milkCarton') ? `<button class="mb-btn mb-pet mb-cover" aria-label="Avvicina il biscotto (tieni premuto)">${img('cookie.svg', 26)}Biscotto</button>` : `<button class="mb-btn mb-pet mb-cover" aria-label="Copri con la mano">${icon('ph:hand-tap-fill', 24)}Copri</button>`}` : ''}${this.parts.some(p => p.type === 'catapultBase') ? `<span class="mb-seg" role="group" aria-label="Quanti elastici"><span class="mb-segl">Elastici</span>${[1, 2, 3].map(n => `<button class="mb-segb ${this.bands === n ? 'on' : ''}" data-bands="${n}" aria-label="${n} ${n === 1 ? 'elastico' : 'elastici'}">${n}</button>`).join('')}</span><button class="mb-btn mb-pet mb-load" aria-label="Carica la catapulta">${img('catapult-base.svg', 26)}Carica</button>` : ''}${/Gesture\.Shake/.test(this.code) ? (this.parts.some(p => p.type === 'strap') ? `<button class="mb-btn mb-pet mb-step" aria-label="Fai un passo">${img('footprints.svg', 28)}Fai un passo</button>` : `<button class="mb-btn mb-pet mb-step" aria-label="Scuoti">${icon('ph:vibrate-fill', 24)}Scuoti</button>`) : ''}${this.friends.size ? `<span class="mb-label">Il micro:bit dell'amico</span><button class="mb-btn mb-friend" data-fbtn="A" aria-label="Pulsante A dell'amico">A</button><button class="mb-btn mb-friend" data-fbtn="B" aria-label="Pulsante B dell'amico">B</button>` : ''}${/RadioPacketProperty\.SignalStrength/.test(this.code) && this.friends.size ? `<button class="mb-btn mb-pet mb-hunt" aria-label="Gioca alla caccia al tesoro">${img('compass.svg', 26)}Cerca il tesoro</button>` : ''}${this.wiredFoil() ? `<button class="mb-btn mb-pet" data-foil="${this.wiredFoil()}" aria-label="Accarezza Luna">${img('luna.png', 30)}Accarezza</button>` : ''}`;
     else if (this.mode === 'wire' && this.pending) html = `${img('crocodile.svg', 30)}<span>Ora tocca dove va il cavo: <b>${esc(this.termLabel(this.pending))}</b> → ?</span>`;
     else if (this.mode === 'wire') html = `${img('crocodile.svg', 30)}<span>Tocca un cerchietto, poi un altro: il cavo a coccodrillo li unisce.</span>`;
     h.hidden = !html;
     h.innerHTML = html;
     h.classList.toggle('hint-run', this.running);
-    h.querySelector<HTMLElement>('.mb-light')?.addEventListener('click', () => this.toggleRoom());
+    for (const b of h.querySelectorAll<HTMLElement>('[data-light]')) b.addEventListener('click', () => this.setRoom(Number(b.dataset.light)));
+    for (const b of h.querySelectorAll<HTMLElement>('[data-bands]')) b.addEventListener('click', () => this.setBands(Number(b.dataset.bands)));
     h.querySelector<HTMLElement>('.mb-buzz')?.addEventListener('click', () => this.openBuzz());
     h.querySelector<HTMLElement>('.mb-load')?.addEventListener('click', () => this.loadCatapult());
     for (const fb of h.querySelectorAll<HTMLElement>('.mb-fruit')) {
@@ -1560,6 +1583,9 @@ export class Workspace {
       press: (b: 'A' | 'B') => { this.rt.pressButton(b, true); this.rt.pressButton(b, false); },
       step: () => this.takeStep(),
       room: () => this.toggleRoom(),
+      setRoom: (n: number) => this.setRoom(n),
+      light: () => this.lightNow(),
+      bands: (n: number) => this.setBands(n),
       buzz: () => this.openBuzz(),
       fruit: (id: string, d: boolean) => this.touchFoil(id, d),
       friendPress: (b: 'A' | 'B') => { const r = [...this.friends.values()][0]; r?.pressButton(b, true); r?.pressButton(b, false); },

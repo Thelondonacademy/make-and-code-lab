@@ -74,7 +74,7 @@ export interface Built {
   horn?: THREE.Group;
   ledLight?: THREE.PointLight;
   ledBulb?: THREE.Mesh;
-  setCatapult?: (deg: number, ball: boolean) => void; // catapulta: angolo del braccio e pallina nel cucchiaio
+  setCatapult?: (deg: number, ball: boolean, bands?: number) => void; // catapulta: angolo del braccio e pallina nel cucchiaio
 }
 
 function microbit(): Built {
@@ -797,20 +797,31 @@ function catapultBase(): Built {
   arm.rotation.x = -(CATA.up * Math.PI) / 180;
   g.add(arm);
   // l'elastico: dalla sbarra al braccio
-  const band = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xe5484d }));
-  band.name = 'band';
-  g.add(band);
-  setArm(g, CATA.up, false);
-  return { group: g, setCatapult: (deg: number, ball: boolean) => setArm(g, deg, ball) };
+  // fino a tre elastici, uno accanto all'altro: più elastici, più forza
+  for (let i = 0; i < 3; i++) {
+    const band = mesh(new THREE.CylinderGeometry(0.07, 0.07, 1, 6), mat(0xe5484d, { roughness: 0.6 }));
+    band.name = 'band' + i;
+    g.add(band);
+  }
+  setArm(g, CATA.up, false, 2);
+  return { group: g, setCatapult: (deg: number, ball: boolean, bands = 2) => setArm(g, deg, ball, bands) };
 }
-function setArm(g: THREE.Group, deg: number, ballOn: boolean) {
+function setArm(g: THREE.Group, deg: number, ballOn: boolean, bands: number) {
   const arm = g.getObjectByName('cata-arm')!;
   arm.rotation.x = -(deg * Math.PI) / 180;
   g.getObjectByName('ball')!.visible = ballOn;
   const a = (deg * Math.PI) / 180;
-  const hook = new THREE.Vector3(0, CATA.pivot.y + Math.sin(a) * CATA.band + Math.cos(a) * 0.3, CATA.pivot.z + Math.cos(a) * CATA.band - Math.sin(a) * 0.3);
-  const band = g.getObjectByName('band') as THREE.Line;
-  band.geometry.setFromPoints([new THREE.Vector3(0, 8.6, -5.6), hook]);
+  const up = new THREE.Vector3(0, 1, 0);
+  [0, -0.28, 0.28].forEach((x, i) => {
+    const band = g.getObjectByName('band' + i) as THREE.Mesh;
+    band.visible = i < bands;
+    const top = new THREE.Vector3(x, 8.6, -5.6);
+    const hook = new THREE.Vector3(x, CATA.pivot.y + Math.sin(a) * CATA.band + Math.cos(a) * 0.3, CATA.pivot.z + Math.cos(a) * CATA.band - Math.sin(a) * 0.3);
+    const d = hook.clone().sub(top), len = d.length();
+    band.position.copy(top).addScaledVector(d, 0.5);
+    band.scale.set(1, len, 1);
+    band.quaternion.setFromUnitVectors(up, d.normalize());
+  });
 }
 
 /** Il servo in piedi accanto alla catapulta: a 90 il fermo sta sopra il braccio e lo tiene giù. */

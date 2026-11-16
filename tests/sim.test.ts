@@ -509,3 +509,36 @@ describe('Mostro del latte e catapulta', () => {
     expect(hw.servoAngle.get('s1')).toBe(180);
   });
 });
+
+describe('I cavi sul banco', () => {
+  it('un cavo lungo si appoggia sul banco, non sta in aria', async () => {
+    const { wirePath } = await import('../src/scene/wirepath');
+    const pts = wirePath([0, 0.5, 0], [20, 0.5, 0]);
+    expect(pts[0][1]).toBeCloseTo(0.8);
+    expect(pts.at(-1)![1]).toBeCloseTo(0.8);
+    const mid = pts[Math.floor(pts.length / 2)];
+    expect(mid[1]).toBeLessThan(0.5);
+    expect(Math.min(...pts.map(p => p[1]))).toBeGreaterThanOrEqual(0.2);
+  });
+  it('passa sopra un pezzo che trova sulla strada, non ci passa attraverso', async () => {
+    const { wirePath } = await import('../src/scene/wirepath');
+    const box = { minX: 8, maxX: 12, minZ: -2, maxZ: 2, top: 5 };
+    const pts = wirePath([0, 0.5, 0], [20, 0.5, 0], [box]);
+    for (const p of pts) if (p[0] > 8 && p[0] < 12) expect(p[1]).toBeGreaterThanOrEqual(5.3);
+    // lontano dal pezzo torna giù
+    expect(pts[2][1]).toBeLessThan(2);
+  });
+  it('un cavo corto fa un archetto; un cavo che parte dall\'alto scende piano', async () => {
+    const { wirePath } = await import('../src/scene/wirepath');
+    const short = wirePath([0, 0.5, 0], [3, 0.5, 0]);
+    expect(Math.max(...short.map(p => p[1]))).toBeGreaterThan(0.8);
+    const high = wirePath([0, 10, 0], [20, 0.5, 0]);
+    for (let i = 1; i < high.length; i++) expect(high[i][1]).toBeLessThanOrEqual(high[i - 1][1] + 0.9);
+    expect(high[2][1]).toBeGreaterThan(5);
+  });
+  it('due cavi tra gli stessi pezzi non si sovrappongono', async () => {
+    const { wirePath } = await import('../src/scene/wirepath');
+    const a = wirePath([0, 0.5, 0], [20, 0.5, 0], [], 0), b = wirePath([0, 0.5, 0], [20, 0.5, 0], [], 4);
+    expect(Math.abs(a[9][2] - b[9][2])).toBeGreaterThan(0.5);
+  });
+});

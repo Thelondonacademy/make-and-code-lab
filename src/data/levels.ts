@@ -241,12 +241,12 @@ basic.forever(function () {
       { title: 'Prendi le pile', mode: 'build', text: 'Trascina le pile vicino al micro:bit.', goal: c => has(c, 'battery') },
       { title: 'Accendi il micro:bit', mode: 'wire', text: 'Tocca la spina bianca delle pile. Poi tocca la presa delle pile sul micro:bit.', goal: powered },
       {
-        title: 'Fai notte', mode: 'code', text: 'Premi Prova! Poi premi "Spegni la luce". Si fa buio: il micro:bit si accende!',
+        title: 'Fai notte', mode: 'code', text: 'Premi Prova! Poi premi la luna: si fa buio e il micro:bit si accende!',
         goal: c => c.running && !!c.stats && c.stats.iconsShown.has('leds'),
         why: { q: 'Come fa a sapere che è buio?', a: 'Le lucine del micro:bit sanno anche sentire la luce. Il micro:bit misura la luce con un numero: 0 è buio, 255 è tanta luce.' },
       },
       {
-        title: 'Fai giorno', mode: 'code', text: 'Ora premi "Accendi la luce". Torna giorno: il micro:bit si spegne da solo.',
+        title: 'Fai giorno', mode: 'code', text: 'Ora premi la lampadina: torna la luce e il micro:bit si spegne da solo.',
         goal: c => c.running && !!c.stats && c.stats.clearsAfterLeds > 0,
         why: { q: 'Cosa vuol dire "se... altrimenti"?', a: 'Se la luce è meno di 100, accendi le lucine. Altrimenti, cioè se c\'è tanta luce, spegnile.' },
       },
@@ -263,7 +263,7 @@ basic.forever(function () {
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Cambia il 100 con un altro numero, per esempio 50. Poi premi Prova!, spegni la luce oppure copri il micro:bit con la mano.',
         goal: c => c.runInStep && lightGoal(c.code) !== null && lightGoal(c.code) !== 100 && !!c.stats && c.stats.iconsShown.has('leds'),
-        why: { q: 'Quale numero è giusto?', a: 'Dipende dalla tua stanza! Con un numero più piccolo si accende solo quando è proprio buio. Prova e guarda cosa succede.' },
+        why: { q: 'Quale numero è giusto?', a: 'Dipende dalla tua stanza! La luna vale 10, la lampadina 120, il sole 250. Con 150 si accende anche con la lampadina. Con 5 non si accende mai. Prova!' },
       },
     ],
     real: {
@@ -790,12 +790,12 @@ basic.forever(function () {
       {
         title: 'Arriva il biscotto', mode: 'code', text: 'Premi Prova! Poi tieni premuto Biscotto: davanti all\'occhio fa buio e il mostro apre la bocca. Gnam!',
         goal: c => c.running && !!onServoOf(c, 'milkString', 'milkCarton') && c.servoMoves >= 1,
-        why: { q: 'Come fa a capire che arriva il biscotto?', a: 'Se la luce è meno di 20, cioè buio, il servo va a 100 e tira lo spago: la bocca si apre. Altrimenti torna a 180 e la bocca si chiude.' },
+        why: { q: 'Come fa a capire che arriva il biscotto?', a: 'Il biscotto copre l\'occhio: passa poca luce. Se la luce è meno di 20, il servo va a 100 e tira lo spago: la bocca si apre. Prova con il sole: c\'è così tanta luce che il biscotto non basta più! Allora cambia 20 con 40.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Fai aprire la bocca solo un pochino: cambia 100 con 140. Poi premi Prova! e avvicina il biscotto.',
         goal: c => c.runInStep && !/AnalogPin\.P0,\s*100\)/.test(c.code) && /lightLevel/.test(c.code) && c.servoMoves >= 1,
-        why: { q: 'Perché si apre di meno?', a: 'Da 180 a 140 il braccio gira poco e tira poco lo spago. Da 180 a 100 gira di più. Se la bocca resta sempre aperta, la tua stanza è buia: metti un numero più piccolo al posto di 20.' },
+        why: { q: 'Perché si apre di meno?', a: 'Da 180 a 140 il braccio gira poco e tira poco lo spago. Da 180 a 100 gira di più. Se premi la luna la bocca resta sempre aperta: la stanza è buia. Metti 5 al posto di 20.' },
       },
     ],
     real: {
@@ -805,7 +805,7 @@ basic.forever(function () {
   },
   {
     id: 'catapulta',
-    rev: 2,
+    rev: 3,
     lesson: 4,
     title: 'La catapulta',
     icon: 'gi:catapult',
@@ -816,7 +816,7 @@ basic.forever(function () {
         { id: 'mb1', type: 'microbit', x: -16, z: 8, rot: 0 },
         { id: 'bat1', type: 'battery', x: -16, z: -2, rot: 0 },
         { id: 'cb1', type: 'catapultBase', x: 4, z: 10, rot: 0 },
-        { id: 'bk1', type: 'bucket', x: 4, z: -8, rot: 0 },
+        { id: 'bk1', type: 'bucket', x: 4, z: -13, rot: 0 },
       ],
       wires: [{ id: 'w-pow', a: 'bat1:PLUG', b: 'mb1:BAT', color: 'bianco' }],
     },
@@ -861,6 +861,11 @@ input.onButtonPressed(Button.A, function () {
         title: 'Carica e lancia!', mode: 'code', text: 'Premi Prova! Poi premi Carica: il braccio va giù e il fermo lo tiene. Poi premi A: il servo sposta il fermo e... via!',
         goal: c => c.running && c.game.throws >= 1,
         why: { q: 'Chi lancia la pallina?', a: 'L\'elastico! Il servo non muove la catapulta: la tiene ferma, carica. È il grilletto. A 3 volt il servo è piccolo: basta che sposti il fermo.' },
+      },
+      {
+        title: 'Fai centro!', mode: 'code', text: 'La pallina cade prima del bersaglio. Scegli 3 elastici. Poi premi Carica e A.',
+        goal: c => c.running && c.game.hits >= 1,
+        why: { q: 'Perché con 3 elastici va più lontano?', a: 'Più elastici tirano più forte il braccio: la pallina parte più veloce e vola più lontano. Con 1 elastico cade vicino. Puoi anche spostare il bersaglio.' },
       },
       {
         title: 'Cambialo tu!', mode: 'code', text: 'Il servo lavora bene tra 10 e 170: a 0 arriva in fondo e ronza. Cambia 0 con 20. Poi premi Prova!, Carica e A: parte ancora?',
